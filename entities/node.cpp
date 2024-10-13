@@ -4,19 +4,19 @@
 
 #include "node.h"
 
-Node::Node() : _receive_running(false)
+Node::Node() : _socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP), _receive_running(false), _keep_alive_running(false)
 {
     _pcb.new_phase(TCU_PHASE_INITIALIZE);
 
-    _sock_desc = socket(AF_INET, SOCK_DGRAM, 0);
-    if (_sock_desc < 0)
+    if (_socket.get_socket() < 0)
     {
-        perror("socket");
         exit(EXIT_FAILURE);
     }
 
-    int flags = fcntl(_sock_desc, F_GETFL, 0);
-    fcntl(_sock_desc, F_SETFL, flags | O_NONBLOCK);
+    if (_socket.set_non_blocking() < 0)
+    {
+        exit(EXIT_FAILURE);
+    }
 }
 
 Node::~Node()
@@ -25,7 +25,7 @@ Node::~Node()
 
     stop_receiving();
     stop_keep_alive();
-    close(_sock_desc);
+    _socket.close_socket();
 }
 
 void Node::start_receiving()
@@ -39,13 +39,9 @@ void Node::start_receiving()
 
 void Node::stop_receiving()
 {
-    _receive_running = false;
+    _socket.close_socket();
 
-    if (_sock_desc != -1)
-    {
-        close(_sock_desc);
-        _sock_desc = -1;
-    }
+    _receive_running = false;
 
     if (_receive_thread.joinable())
     {
@@ -57,7 +53,7 @@ void Node::receive_loop()
 {
     while (_receive_running)
     {
-        if (_sock_desc == -1)
+        if (_socket.get_socket() == -1)
         {
             break;
         }
@@ -131,7 +127,7 @@ void Node::keep_alive_loop()
             }
         }
 
-        // If not get acknowledgment, close connection
+        // If not get_socket acknowledgment, close connection
         if (!ack_received)
         {
             std::cout << "no tcu keep-alive acknowledgment, closing connection" << std::endl;
@@ -147,20 +143,20 @@ void Node::receive_packet()
 
     fd_set read_fds;
     FD_ZERO(&read_fds);
-    FD_SET(_sock_desc, &read_fds);
+    FD_SET(_socket.get_socket(), &read_fds);
 
     struct timeval timeout;
     timeout.tv_sec = 0;
     timeout.tv_usec = 100000;
 
-    int result = select(_sock_desc + 1, &read_fds, nullptr, nullptr, &timeout);
+    int result = select(_socket.get_socket() + 1, &read_fds, nullptr, nullptr, &timeout);
 
-    if (result > 0 && FD_ISSET(_sock_desc, &read_fds))
+    if (result > 0 && FD_ISSET(_socket.get_socket(), &read_fds))
     {
         struct sockaddr_in src_addr;
         socklen_t src_addr_len = sizeof(src_addr);
 
-        ssize_t num_bytes = recvfrom(_sock_desc, temp_buff, sizeof(temp_buff), 0, (struct sockaddr*)&src_addr, &src_addr_len);
+        ssize_t num_bytes = recvfrom(_socket.get_socket(), temp_buff, sizeof(temp_buff), 0, (struct sockaddr*)&src_addr, &src_addr_len);
 
         if (num_bytes < 0)
         {
@@ -182,7 +178,7 @@ void Node::receive_packet()
 
 void Node::send_packet(unsigned char* buff, size_t length)
 {
-    ssize_t num_bytes = sendto(_sock_desc, buff, length, 0, reinterpret_cast<struct sockaddr*>(&_pcb.dest_addr), sizeof(_pcb.dest_addr));
+    ssize_t num_bytes = sendto(_socket.get_socket(), buff, length, 0, reinterpret_cast<struct sockaddr*>(&_pcb.dest_addr), sizeof(_pcb.dest_addr));
 
     if (num_bytes < 0)
     {

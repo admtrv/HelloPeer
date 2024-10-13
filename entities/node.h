@@ -17,6 +17,7 @@
 #include <condition_variable>
 
 #include "../protocols/tcu.h"
+#include "socket.h"
 
 class Node {
 public:
@@ -31,7 +32,7 @@ public:
         local_addr.sin_port = htons(_pcb.src_port);
         local_addr.sin_addr.s_addr = INADDR_ANY;
 
-        if (bind(_sock_desc, reinterpret_cast<struct sockaddr*>(&local_addr), sizeof(local_addr)) < 0)
+        if (bind(_socket.get_socket(), reinterpret_cast<struct sockaddr*>(&local_addr), sizeof(local_addr)) < 0)
         {
             perror("bind");
             exit(EXIT_FAILURE);
@@ -76,8 +77,8 @@ public:
     void send_keep_alive_ack();
 
 private:
-    /* Socket params */
-    int _sock_desc;
+    /* Socket control block */
+    Socket _socket;
 
     /* TCU protocol control block */
     tcu_pcb _pcb;
