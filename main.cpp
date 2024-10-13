@@ -7,10 +7,10 @@
 
 int main()
 {
-    Node node;
+    Node _node;
 
-    CLI cli(&node);
-    cli.run();
+    CLI _cli(&_node);
+    _cli.run();
 
     return 0;
 }

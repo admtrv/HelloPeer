@@ -7,7 +7,7 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
-CLI::CLI(Node* node) : node(node)
+CLI::CLI(Node* node) : _node(node)
 {
     read_history(".cli_history");
 }
@@ -35,7 +35,7 @@ void CLI::run() {
         if (command.substr(0, 15) == "proc node port ")
         {
             int port = std::stoi(command.substr(15));
-            node->set_port(port);
+            _node->set_port(port);
         }
 
         else if (command.substr(0, 15) == "proc node dest ")
@@ -51,7 +51,7 @@ void CLI::run() {
                 in_addr dest_ip;
                 if (inet_pton(AF_INET, ip.c_str(), &dest_ip) == 1)
                 {
-                    node->set_dest(dest_ip, port);
+                    _node->set_dest(dest_ip, port);
                 }
                 else
                 {
@@ -62,17 +62,18 @@ void CLI::run() {
 
         else if (command == "proc node connect")
         {
-            node->send_tcu_conn_req();
+            _node->send_tcu_conn_req();
         }
 
         else if (command == "proc node disconnect")
         {
-            node->send_tcu_disconn_req();
+            _node->send_tcu_disconn_req();
         }
 
         else if (command == "exit")
         {
-            node->stop_receiving();
+            _node->stop_receiving();
+            _node->stop_keep_alive();
             break;
         }
 

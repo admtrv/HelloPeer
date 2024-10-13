@@ -17,7 +17,7 @@ public:
     void run();
 
 private:
-    Node* node;
+    Node* _node;
     void display_help();
 };
 

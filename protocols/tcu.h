@@ -76,18 +76,19 @@
  * 3. Disconnection Request — FIN, LEN 0
  * 4. Disconnection Acknowledgment — FIN + ACK, LEN 0
  *
- * 5. Single Message — DF, LEN
- * 6. Fragment of Message — MF, LEN
- * 7. Last Fragment of Message — NONE, LEN
+ * 5. Keep-Alive Request — KA, LEN 0
+ * 6. Keep-Alive Acknowledgment — KA + ACK, LEN 0
  *
- * 8. Single File - DF + FL, LEN
- * 9. Fragment of File — MF + FL, LEN
- * 10. Last Fragment of File — FL, LEN
+ * 7. Single Message — DF, LEN
+ * 8. Fragment of Message — MF, LEN
+ * 9. Last Fragment of Message — NONE, LEN
  *
- * 11. Keep-Alive — KA, LEN 0
+ * 10. Single File - DF + FL, LEN
+ * 11. Fragment of File — MF + FL, LEN
+ * 12. Last Fragment of File — FL, LEN
  *
- * 12. Acknowledgment - ACK, LEN 0, SEQ NUM 0
- * 13. Negative Acknowledgment — NACK, LEN 0, SEQ NUM [ERR FRG]
+ * 13. Acknowledgment - ACK, LEN 0, SEQ NUM 0
+ * 14. Negative Acknowledgment — NACK, LEN 0, SEQ NUM [ERR FRG]
  */
 
 #pragma once
@@ -118,6 +119,10 @@
 
 #define TCU_HDR_LEN             8
 #define TCU_MAX_PAYLOAD         65499
+
+#define TCU_KA_TIMEOUT          300     // 5 minutes (300 seconds) without activities
+#define TCU_KA_ATTEMPT_COUNT    3       // Number of attempts
+#define TCU_KA_ATTEMPT_INTERVAL 5       // 5 second interval between attempts
 
 struct tcu_header {
     uint16_t length;            // Payload length
@@ -153,5 +158,12 @@ struct tcu_pcb {
     in_addr dest_ip;
     struct sockaddr_in dest_addr;
 
+    /* Keep-Alive params */
+    std::chrono::time_point<std::chrono::steady_clock> last_activity;   // Last activity
+    int attempt_count = 0;                                              // Attempts count
+
     void new_phase(int phase);
+    void update_last_activity();
+    bool is_activity_recent();
+
 };

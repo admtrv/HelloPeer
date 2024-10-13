@@ -14,6 +14,7 @@
 #include <atomic>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <condition_variable>
 
 #include "../protocols/tcu.h"
 
@@ -54,17 +55,25 @@ public:
     void start_receiving();
     void stop_receiving();
 
+    void start_keep_alive();
+    void stop_keep_alive();
+
     void fsm_process(unsigned char* buff, size_t length);
 
     void process_tcu_conn_req(tcu_packet packet);
     void process_tcu_conn_ack(tcu_packet packet);
     void process_tcu_disconn_req(tcu_packet packet);
     void process_tcu_disconn_ack(tcu_packet packet);
+    void process_tcu_ka_req(tcu_packet packet);
+    void process_tcu_ka_ack(tcu_packet packet);
+
 
     void send_tcu_conn_req();
     void send_tcu_conn_ack();
     void send_tcu_disconn_req();
     void send_tcu_disconn_ack();
+    void send_keep_alive();
+    void send_keep_alive_ack();
 
 private:
     /* Socket params */
@@ -75,7 +84,11 @@ private:
 
     /* Receiving thread params */
     void receive_loop();
-    std::atomic<bool> _running;
+    std::atomic<bool> _receive_running;
     std::thread _receive_thread;
 
+    /* Keep-Alive thread params */
+    void keep_alive_loop();
+    std::atomic<bool> _keep_alive_running;
+    std::thread _keep_alive_thread;
 };

@@ -133,3 +133,14 @@ void tcu_pcb::new_phase(int new_phase)
         std::cerr << "exception phase: " << new_phase << std::endl;
     }
 }
+
+void tcu_pcb::update_last_activity()
+{
+    last_activity = std::chrono::steady_clock::now();
+}
+
+bool tcu_pcb::is_activity_recent()
+{
+    auto now = std::chrono::steady_clock::now();
+    return (now - last_activity) < std::chrono::seconds(TCU_KA_ATTEMPT_COUNT * TCU_KA_ATTEMPT_INTERVAL);
+}
