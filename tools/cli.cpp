@@ -7,14 +7,16 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#include "logger.h"
+
 CLI::CLI(Node* node) : _node(node)
 {
-    read_history(".cli_history");
+    read_history(CLI_HISTORY_FILE_NAME);
 }
 
 CLI::~CLI()
 {
-    write_history(".cli_history");
+    write_history(CLI_HISTORY_FILE_NAME);
 }
 
 void CLI::run() {
@@ -41,7 +43,7 @@ void CLI::run() {
         else if (command.substr(0, 15) == "proc node dest ")
         {
             std::string ip_and_port = command.substr(15);
-            size_t separator = ip_and_port.find(' ');
+            size_t separator = ip_and_port.find(':');
 
             if (separator != std::string::npos)
             {
@@ -56,6 +58,7 @@ void CLI::run() {
                 else
                 {
                     std::cerr << "invalid ip addr format" << std::endl;
+                    return;
                 }
             }
         }
@@ -82,6 +85,39 @@ void CLI::run() {
             display_help();
         }
 
+        else if (command == "show log")
+        {
+            std::string logs = Logger::get_instance()->get_logs();
+            std::cout << logs << std::endl;
+        }
+
+        else if (command.substr(0, 13) == "set log level")
+        {
+            std::string level_str = command.substr(14);
+            spdlog::level::level_enum level;
+
+            if (level_str == "trace")
+                level = spdlog::level::trace;
+            else if (level_str == "debug")
+                level = spdlog::level::debug;
+            else if (level_str == "info")
+                level = spdlog::level::info;
+            else if (level_str == "warn")
+                level = spdlog::level::warn;
+            else if (level_str == "error")
+                level = spdlog::level::err;
+            else if (level_str == "critical")
+                level = spdlog::level::critical;
+            else
+            {
+                std::cout << "unknown log level " << level_str << std::endl;
+                return;
+            }
+
+            Logger::get_instance()->set_level(level);
+            spdlog::info("[CLI::run] changed log level {}", to_string_view(level));
+        }
+
         else if (command.empty())
         {
             continue;
@@ -96,9 +132,11 @@ void CLI::run() {
 
 void CLI::display_help() {
     std::cout << "commands:\n"
-              << " proc node port <port> - set source node port will listen\n"
-              << " proc node dest <ip> <port> - set destination node ip and port\n"
-              << " proc node connect - connect to destination node\n"
-              << " proc node disconnect - disconnec with destination node\n"
-              << " exit - exit application\n";
+              << " proc node port <port>        - set source node port will listen\n"
+              << " proc node dest <ip>:<port>   - set destination node ip and port\n"
+              << " proc node connect            - connect to destination node\n"
+              << " proc node disconnect         - disconnec with destination node\n"
+              << " set log level <level>        - set log level (trace, debug, info, warn, error, critical)\n"
+              << " show log                     - display current logs\n"
+              << " exit                         - exit application\n";
 }

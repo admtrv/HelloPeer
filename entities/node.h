@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <condition_variable>
+#include <spdlog/spdlog.h>
 
 #include "../protocols/tcu.h"
 #include "socket.h"
@@ -73,7 +74,7 @@ public:
     void send_tcu_conn_ack();
     void send_tcu_disconn_req();
     void send_tcu_disconn_ack();
-    void send_keep_alive();
+    void send_keep_alive_req();
     void send_keep_alive_ack();
 
 private:

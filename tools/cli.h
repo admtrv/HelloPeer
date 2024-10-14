@@ -9,6 +9,8 @@
 
 #include "../entities/node.h"
 
+#define CLI_HISTORY_FILE_NAME ".cli_history"
+
 class CLI {
 public:
     CLI(Node* node);

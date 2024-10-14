@@ -126,11 +126,11 @@ void tcu_pcb::new_phase(int new_phase)
     if (phase >= TCU_PHASE_DEAD && phase <= TCU_PHASE_CLOSED)
     {
         phase = new_phase;
-        std::cout << "new phase: " << int(phase) << std::endl;
+        spdlog::info("[tcu_pcb::new_phase] new phase {}", int(phase));
     }
     else
     {
-        std::cerr << "exception phase: " << new_phase << std::endl;
+        spdlog::error("[tcu_pcb::new_phase] unknown phase {}", int(phase));
     }
 }
 

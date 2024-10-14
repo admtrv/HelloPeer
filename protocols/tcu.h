@@ -99,6 +99,7 @@
 #include <cstring>
 #include <netinet/in.h>
 #include <chrono>
+#include <spdlog/spdlog.h>
 
 #define TCU_PHASE_DEAD          0
 #define TCU_PHASE_HOLDOFF       1
