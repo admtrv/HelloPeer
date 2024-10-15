@@ -4,6 +4,56 @@
 
 #include "tcu.h"
 
+tcu_packet::tcu_packet() : payload(nullptr) {}
+
+tcu_packet::tcu_packet(const tcu_packet& other)
+{
+    header = other.header;
+    if (other.payload != nullptr && header.length > 0)
+    {
+        payload = new unsigned char[header.length];
+        std::memcpy(payload, other.payload, header.length);
+    }
+    else
+    {
+        payload = nullptr;
+    }
+}
+
+tcu_packet& tcu_packet::operator=(const tcu_packet& other)
+{
+    if (this == &other)
+        return *this;
+
+    if (payload != nullptr)
+    {
+        delete[] payload;
+        payload = nullptr;
+    }
+
+    header = other.header;
+    if (other.payload != nullptr && header.length > 0)
+    {
+        payload = new unsigned char[header.length];
+        std::memcpy(payload, other.payload, header.length);
+    }
+    else
+    {
+        payload = nullptr;
+    }
+
+    return *this;
+}
+
+tcu_packet::~tcu_packet()
+{
+    if (payload != nullptr)
+    {
+        delete[] payload;
+        payload = nullptr;
+    }
+}
+
 unsigned char* tcu_packet::to_buff()
 {
     size_t total_size = sizeof(tcu_header) + header.length;
@@ -143,4 +193,10 @@ bool tcu_pcb::is_activity_recent() const
 {
     auto now = std::chrono::steady_clock::now();
     return (now - last_activity) < std::chrono::seconds(TCU_KA_ATTEMPT_COUNT * TCU_KA_ATTEMPT_INTERVAL);
+}
+
+void tcu_pcb::set_max_frag_size(size_t size)
+{
+    max_frag_size = size;
+    spdlog::info("[tcu_pcb::set_max_frag_size] set max fragment size {}", size);
 }

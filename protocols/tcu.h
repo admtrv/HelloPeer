@@ -100,6 +100,7 @@
 #include <netinet/in.h>
 #include <chrono>
 #include <spdlog/spdlog.h>
+#include <map>
 
 #define TCU_PHASE_DEAD          0
 #define TCU_PHASE_HOLDOFF       1
@@ -109,6 +110,7 @@
 #define TCU_PHASE_DISCONNECT    5
 #define TCU_PHASE_CLOSED        6
 
+#define TCU_HDR_NO_FLAG         0x00
 #define TCU_HDR_FLAG_SYN        0x01
 #define TCU_HDR_FLAG_ACK        0x02
 #define TCU_HDR_FLAG_FIN        0x04
@@ -118,8 +120,9 @@
 #define TCU_HDR_FLAG_FL         0x40
 #define TCU_HDR_FLAG_KA         0x80
 
+#define UDP_MAX_PAYLOAD_LEN     65507
 #define TCU_HDR_LEN             8
-#define TCU_MAX_PAYLOAD         65499
+#define TCU_MAX_PAYLOAD_LEN     (UDP_MAX_PAYLOAD_LEN - TCU_HDR_LEN)
 
 #define TCU_KA_TIMEOUT          300     // 5 minutes (300 seconds) without activities
 #define TCU_KA_ATTEMPT_COUNT    3       // Number of attempts
@@ -133,8 +136,14 @@ struct tcu_header {
 };
 
 struct tcu_packet {
-    tcu_header header;
+    tcu_header header{};
     unsigned char* payload;
+
+    tcu_packet();
+    ~tcu_packet();
+
+    tcu_packet(const tcu_packet& other);                // Deep-copy constructor
+    tcu_packet& operator=(const tcu_packet& other);     // Deep-copy operator =
 
     unsigned char* to_buff();
     static tcu_packet from_buff(unsigned char* buff);
@@ -149,7 +158,10 @@ uint16_t calculate_crc16(const unsigned char* data, size_t length);   // CRC16-C
 struct tcu_pcb {
     /* Connection params */
     uint8_t phase = TCU_PHASE_DEAD;     // Phase, where link at
-    std::vector< tcu_packet > window;   // Window for Selective Repeat (SR)
+
+    /* Message params*/
+    size_t max_frag_size = TCU_MAX_PAYLOAD_LEN;     // Maximum size of fragmented message
+    std::map<uint16_t, tcu_packet> window;          // Window for fragments and Selective Repeat (SR)
 
     /* Source node params */
     uint16_t src_port;
@@ -164,6 +176,8 @@ struct tcu_pcb {
     int attempt_count = 0;                                              // Attempts count
 
     void new_phase(int phase);
+    void set_max_frag_size(size_t size);
+
     void update_last_activity();
     bool is_activity_recent() const;
 

@@ -58,8 +58,28 @@ void CLI::run() {
                 else
                 {
                     std::cerr << "invalid ip addr format" << std::endl;
-                    return;
+                    continue;
                 }
+            }
+        }
+
+        else if (command.substr(0, 20) == "proc node frag size ")
+        {
+            try {
+                size_t size = std::stoul(command.substr(20));
+
+                if (size > 0 && size < TCU_MAX_PAYLOAD_LEN)
+                {
+                    _node->get_pcb().set_max_frag_size(size);
+                }
+                else
+                {
+                    std::cout << "invalid fragment size" << std::endl;
+                }
+            }
+            catch(std::out_of_range&)
+            {
+                std::cout << "invalid fragment size" << std::endl;
             }
         }
 
@@ -91,7 +111,7 @@ void CLI::run() {
             std::cout << logs << std::endl;
         }
 
-        else if (command.substr(0, 13) == "set log level")
+        else if (command.substr(0, 14) == "set log level ")
         {
             std::string level_str = command.substr(14);
             spdlog::level::level_enum level;
@@ -110,12 +130,18 @@ void CLI::run() {
                 level = spdlog::level::critical;
             else
             {
-                std::cout << "unknown log level " << level_str << std::endl;
-                return;
+                std::cout << "unknown log level" << std::endl;
+                continue;
             }
 
             Logger::set_level(level);
             spdlog::info("[CLI::run] changed log level {}", to_string_view(level));
+        }
+
+        else if (command.substr(0, 10) == "send text ")
+        {
+            std::string message = command.substr(10);
+            _node->send_text(message);
         }
 
         else if (command.empty())
@@ -134,8 +160,10 @@ void CLI::display_help() {
     std::cout << "commands:\n"
               << " proc node port <port>        - set source node port will listen\n"
               << " proc node dest <ip>:<port>   - set destination node ip and port\n"
+              << " proc node frag size <size>   - set maximum fragment size in bytes (0," << TCU_MAX_PAYLOAD_LEN << ")\n"
               << " proc node connect            - connect to destination node\n"
               << " proc node disconnect         - disconnect with destination node\n"
+              << " send text <text>             - send text message to connected node\n"
               << " set log level <level>        - set log level (trace, debug, info, warn, error, critical)\n"
               << " show log                     - display current logs\n"
               << " exit                         - exit application\n";

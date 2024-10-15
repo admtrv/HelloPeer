@@ -51,8 +51,12 @@ public:
         _pcb.dest_addr.sin_addr = _pcb.dest_ip;
     }
 
+    tcu_pcb &get_pcb();
+
     void send_packet(unsigned char* buff, size_t length);    // Function to send packet
     void receive_packet();                                   // Function to receive packet
+
+    void send_text(const std::string& message);
 
     void start_receiving();
     void stop_receiving();
@@ -68,7 +72,11 @@ public:
     void process_tcu_disconn_ack(tcu_packet packet);
     void process_tcu_ka_req(tcu_packet packet);
     void process_tcu_ka_ack(tcu_packet packet);
-
+    void process_tcu_single_text(tcu_packet packet);
+    void process_tcu_more_frag_text(tcu_packet packet);
+    void process_tcu_last_frag_text(tcu_packet packet);
+    void process_tcu_positive_ack(tcu_packet packet);
+    void process_tcu_negative_ack(tcu_packet packet);
 
     void send_tcu_conn_req();
     void send_tcu_conn_ack();
@@ -76,6 +84,8 @@ public:
     void send_tcu_disconn_ack();
     void send_keep_alive_req();
     void send_keep_alive_ack();
+    void send_tcu_negative_ack(uint16_t seq_number);
+    void send_tcu_positive_ack(uint16_t seq_number);
 
 private:
     /* Socket control block */
