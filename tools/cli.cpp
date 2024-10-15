@@ -50,7 +50,7 @@ void CLI::run() {
                 std::string ip = ip_and_port.substr(0, separator);
                 int port = std::stoi(ip_and_port.substr(separator + 1));
 
-                in_addr dest_ip;
+                in_addr dest_ip{};
                 if (inet_pton(AF_INET, ip.c_str(), &dest_ip) == 1)
                 {
                     _node->set_dest(dest_ip, port);
@@ -114,7 +114,7 @@ void CLI::run() {
                 return;
             }
 
-            Logger::get_instance()->set_level(level);
+            Logger::set_level(level);
             spdlog::info("[CLI::run] changed log level {}", to_string_view(level));
         }
 
@@ -135,7 +135,7 @@ void CLI::display_help() {
               << " proc node port <port>        - set source node port will listen\n"
               << " proc node dest <ip>:<port>   - set destination node ip and port\n"
               << " proc node connect            - connect to destination node\n"
-              << " proc node disconnect         - disconnec with destination node\n"
+              << " proc node disconnect         - disconnect with destination node\n"
               << " set log level <level>        - set log level (trace, debug, info, warn, error, critical)\n"
               << " show log                     - display current logs\n"
               << " exit                         - exit application\n";

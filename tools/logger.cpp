@@ -48,7 +48,7 @@ std::shared_ptr<Logger> Logger::get_instance()
     std::lock_guard<std::mutex> lock(logger_mutex);
     if (!_instance)
     {
-        _instance = std::shared_ptr<Logger>(new Logger());
+        _instance = std::make_shared<Logger>();
     }
     return _instance;
 }

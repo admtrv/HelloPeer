@@ -13,13 +13,13 @@
 
 class CLI {
 public:
-    CLI(Node* node);
+    explicit CLI(Node* node);
     ~CLI();
 
     void run();
 
 private:
     Node* _node;
-    void display_help();
+    static void display_help();
 };
 

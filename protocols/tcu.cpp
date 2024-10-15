@@ -35,7 +35,7 @@ unsigned char* tcu_packet::to_buff()
 
 tcu_packet tcu_packet::from_buff(unsigned char* buff)
 {
-    tcu_packet packet;
+    tcu_packet packet{};
 
     size_t offset = 0;
 
@@ -62,7 +62,7 @@ tcu_packet tcu_packet::from_buff(unsigned char* buff)
     return packet;
 }
 
-uint16_t calculate_crc16(unsigned char* data, size_t length)
+uint16_t calculate_crc16(const unsigned char* data, size_t length)
 {
     uint16_t crc = 0xFFFF;
 
@@ -139,7 +139,7 @@ void tcu_pcb::update_last_activity()
     last_activity = std::chrono::steady_clock::now();
 }
 
-bool tcu_pcb::is_activity_recent()
+bool tcu_pcb::is_activity_recent() const
 {
     auto now = std::chrono::steady_clock::now();
     return (now - last_activity) < std::chrono::seconds(TCU_KA_ATTEMPT_COUNT * TCU_KA_ATTEMPT_INTERVAL);

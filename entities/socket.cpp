@@ -6,7 +6,7 @@
 
 Socket::Socket(int domain, int type, int protocol) : _sock_desc(-1)
 {
-    _sock_desc = socket(AF_INET, SOCK_DGRAM, 0);
+    _sock_desc = socket(domain, type, protocol);
     if (_sock_desc < 0)
     {
         perror("socket");
@@ -19,7 +19,7 @@ Socket::~Socket()
     close_socket();
 }
 
-int Socket::get_socket()
+int Socket::get_socket() const
 {
     return _sock_desc;
 }
@@ -33,7 +33,7 @@ void Socket::close_socket()
     }
 }
 
-int Socket::set_non_blocking()
+int Socket::set_non_blocking() const
 {
     int flags = fcntl(_sock_desc, F_GETFL, 0);
     if (flags == -1)

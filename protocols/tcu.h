@@ -143,7 +143,7 @@ struct tcu_packet {
     bool validate_crc() ;
 };
 
-uint16_t calculate_crc16(unsigned char* data, size_t length);   // CRC16-CCITT algorithm
+uint16_t calculate_crc16(const unsigned char* data, size_t length);   // CRC16-CCITT algorithm
 
 /* TCU PCB (Protocol Control Block) */
 struct tcu_pcb {
@@ -165,6 +165,6 @@ struct tcu_pcb {
 
     void new_phase(int phase);
     void update_last_activity();
-    bool is_activity_recent();
+    bool is_activity_recent() const;
 
 };

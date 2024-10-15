@@ -148,7 +148,7 @@ void Node::receive_packet()
     FD_ZERO(&read_fds);
     FD_SET(_socket.get_socket(), &read_fds);
 
-    struct timeval timeout;
+    struct timeval timeout{};
     timeout.tv_sec = 0;
     timeout.tv_usec = 100000;
 
@@ -156,7 +156,7 @@ void Node::receive_packet()
 
     if (result > 0 && FD_ISSET(_socket.get_socket(), &read_fds))
     {
-        struct sockaddr_in src_addr;
+        struct sockaddr_in src_addr{};
         socklen_t src_addr_len = sizeof(src_addr);
 
         ssize_t num_bytes = recvfrom(_socket.get_socket(), temp_buff, sizeof(temp_buff), 0, (struct sockaddr*)&src_addr, &src_addr_len);
@@ -307,7 +307,7 @@ void Node::send_tcu_conn_req()
         spdlog::info("[Node::send_tcu_conn_req] sending tcu connection request");
 
         // SYN
-        tcu_packet packet;
+        tcu_packet packet{};
         packet.header.flags = TCU_HDR_FLAG_SYN;
         packet.header.length = 0;
         packet.header.seq_number = 0;
@@ -330,7 +330,7 @@ void Node::send_tcu_conn_ack()
         spdlog::info("[Node::send_tcu_conn_ack] sending tcu connection acknowledgment");
 
         // SYN + ACK
-        tcu_packet packet;
+        tcu_packet packet{};
         packet.header.flags = TCU_HDR_FLAG_SYN | TCU_HDR_FLAG_ACK;
         packet.header.length = 0;
         packet.header.seq_number = 0;
@@ -353,7 +353,7 @@ void Node::send_tcu_disconn_req()
         spdlog::info("[Node::send_tcu_disconn_req] sending tcu disconnection request");
 
         // FIN
-        tcu_packet packet;
+        tcu_packet packet{};
         packet.header.flags = TCU_HDR_FLAG_FIN;
         packet.header.length = 0;
         packet.header.seq_number = 0;
@@ -376,7 +376,7 @@ void Node::send_tcu_disconn_ack()
         spdlog::info("[Node::send_tcu_disconn_ack] sending tcu disconnection acknowledgment");
 
         // FIN + ACK
-        tcu_packet packet;
+        tcu_packet packet{};
         packet.header.flags = TCU_HDR_FLAG_FIN | TCU_HDR_FLAG_ACK;
         packet.header.length = 0;
         packet.header.seq_number = 0;
@@ -395,7 +395,7 @@ void Node::send_tcu_disconn_ack()
 void Node::send_keep_alive_req()
 {
     // KA
-    tcu_packet packet;
+    tcu_packet packet{};
     packet.header.flags = TCU_HDR_FLAG_KA;
     packet.header.length = 0;
     packet.header.seq_number = 0;
@@ -411,7 +411,7 @@ void Node::send_keep_alive_ack()
         spdlog::info("[Node::send_keep_alive_ack] sending tcu keep-alive acknowledgment");
 
         // KA + ACK
-        tcu_packet packet;
+        tcu_packet packet{};
         packet.header.flags = TCU_HDR_FLAG_KA | TCU_HDR_FLAG_ACK;
         packet.header.length = 0;
         packet.header.seq_number = 0;
