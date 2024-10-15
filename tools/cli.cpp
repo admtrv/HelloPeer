@@ -8,6 +8,7 @@
 #include <readline/history.h>
 
 #include "logger.h"
+#include "../version.h"
 
 CLI::CLI(Node* node) : _node(node)
 {
@@ -19,7 +20,10 @@ CLI::~CLI()
     write_history(CLI_HISTORY_FILE_NAME);
 }
 
-void CLI::run() {
+void CLI::run()
+{
+    display_header();
+
     char* input;
     while (true)
     {
@@ -151,7 +155,7 @@ void CLI::run() {
 
         else
         {
-            std::cout << "unknown command, enter help" << std::endl;
+            std::cout << "unknown command" << std::endl;
         }
     }
 }
@@ -163,8 +167,36 @@ void CLI::display_help() {
               << " proc node frag size <size>   - set maximum fragment size in bytes (0," << TCU_MAX_PAYLOAD_LEN << ")\n"
               << " proc node connect            - connect to destination node\n"
               << " proc node disconnect         - disconnect with destination node\n"
-              << " send text <text>             - send text message to connected node\n"
+              << " send text <text>             - send text message to destination node\n"
               << " set log level <level>        - set log level (trace, debug, info, warn, error, critical)\n"
               << " show log                     - display current logs\n"
               << " exit                         - exit application\n";
+}
+
+void CLI::display_header()
+{
+    #ifdef _WIN32
+        std::string user = getenv("USERNAME");      // For Windows
+    #elif defined(__linux__) || defined(__APPLE__)
+        std::string user = getenv("USER");    // For Linux/MacOS
+    #else
+        std::string user = "unknown";
+    #endif
+
+    #ifdef COMMIT_HASH
+        std::string commit = COMMIT_HASH;
+    #else
+        std::string commit = "n/a";
+    #endif
+
+    std::cout << "\n"
+              << " _  _     _ _       ___             _\n"
+              << "| || |___| | |___  | _ \\___ ___ _ _| |\n"
+              << "| __ / -_) | / _ \\ |  _/ -_) -_) '_|_|\n"
+              << "|_||_\\___|_|_\\___/ |_| \\___\\___|_| (_)\n"
+              << "\n"
+              << "p2p application version " << VERSION << " built on " << __DATE__ << " " << __TIME__ << " by " << user << " commit " << commit << "\n"
+              << "Copyright (c) 2024 Anton Dmitriev. Licensed under the MIT License.\n"
+              << "type 'help' to see available commands\n"
+              << "\n";
 }

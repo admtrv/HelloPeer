@@ -51,3 +51,14 @@ message(STATUS "Linking libraries:")
 message(STATUS "  readline: ${READLINE_LIBRARY}")
 message(STATUS "  pthread: ${PTHREAD_LIBRARY}")
 message(STATUS "  spdlog: ${spdlog_DIR}")
+
+# add COMMIT_HASH macro
+execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE COMMIT_HASH
+        ERROR_VARIABLE GIT_ERROR
+        RESULT_VARIABLE GIT_RESULT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+add_definitions(-DCOMMIT_HASH=\"${COMMIT_HASH}\")
