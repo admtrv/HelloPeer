@@ -501,6 +501,10 @@ void Node::send_tcu_conn_req()
 
         wait_for_ack();
     }
+    else if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
+    {
+        std::cout << "already active connection" << std::endl;
+    }
     else
     {
         spdlog::error("[Node::send_tcu_conn_req] unexpected phase {}", _pcb.phase);
@@ -534,8 +538,7 @@ void Node::send_tcu_conn_ack()
 
 void Node::send_tcu_disconn_req()
 {
-    if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
-    {
+    if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK) {
         spdlog::info("[Node::send_tcu_disconn_req] sending tcu disconnection request");
 
         // FIN
@@ -550,6 +553,10 @@ void Node::send_tcu_disconn_req()
         _pcb.new_phase(TCU_PHASE_DISCONNECT);
 
         wait_for_ack();
+    }
+    else if (_pcb.phase <= TCU_PHASE_INITIALIZE)
+    {
+        std::cout << "no active connection" << std::endl;
     }
     else
     {
