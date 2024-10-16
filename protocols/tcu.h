@@ -124,9 +124,9 @@
 #define TCU_HDR_LEN             8
 #define TCU_MAX_PAYLOAD_LEN     (UDP_MAX_PAYLOAD_LEN - TCU_HDR_LEN)
 
-#define TCU_KA_TIMEOUT          300     // 5 minutes (300 seconds) without activities
-#define TCU_KA_ATTEMPT_COUNT    3       // Number of attempts
-#define TCU_KA_ATTEMPT_INTERVAL 5       // 5 second interval between attempts
+#define TCU_ACTIVITY_TIMEOUT_INTERVAL   300     // 5 minutes (300 seconds) without activities
+#define TCU_ACTIVITY_ATTEMPT_COUNT      3       // Number of attempts
+#define TCU_ACTIVITY_ATTEMPT_INTERVAL   5       // 5 second interval between attempts
 
 struct tcu_header {
     uint16_t length;            // Payload length
@@ -171,9 +171,10 @@ struct tcu_pcb {
     in_addr dest_ip;
     struct sockaddr_in dest_addr;
 
-    /* Keep-Alive params */
-    std::chrono::time_point<std::chrono::steady_clock> last_activity;   // Last activity
-    int attempt_count = 0;                                              // Attempts count
+    /* Activity params */
+    std::atomic<std::chrono::steady_clock::time_point> last_activity;
+    std::atomic<bool> is_active{false};
+    mutable std::mutex activity_mutex;
 
     void new_phase(int phase);
     void set_max_frag_size(size_t size);

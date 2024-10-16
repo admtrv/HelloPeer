@@ -95,9 +95,9 @@ void Node::keep_alive_loop()
     {
         bool ack_received = false;
 
-        // Waiting for TCU_KA_TIMEOUT before activity check
+        // Waiting for TCU_ACTIVITY_TIMEOUT_INTERVAL before activity check
         auto start_time = std::chrono::steady_clock::now();
-        while (_keep_alive_running && std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_KA_TIMEOUT))
+        while (_keep_alive_running && std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_ACTIVITY_TIMEOUT_INTERVAL))
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
@@ -107,15 +107,15 @@ void Node::keep_alive_loop()
             break;
         }
 
-        // Check activity
-        for (int i = 0; i < TCU_KA_ATTEMPT_COUNT && _keep_alive_running; i++)
+        // Check activity by sending TCU_ACTIVITY_ATTEMPT_COUNT keep-alive messages
+        for (int i = 0; i < TCU_ACTIVITY_ATTEMPT_COUNT && _keep_alive_running; i++)
         {
             spdlog::info("[Node::keep_alive_loop] sending tcu keep-alive request {}", i + 1);
             send_keep_alive_req();
 
-            // Wait for acknowledgment for TCU_KA_ATTEMPT_INTERVAL
+            // Wait for acknowledgment for TCU_ACTIVITY_ATTEMPT_INTERVAL
             auto attempt_start = std::chrono::steady_clock::now();
-            while (_keep_alive_running && std::chrono::steady_clock::now() - attempt_start < std::chrono::seconds(TCU_KA_ATTEMPT_INTERVAL))
+            while (_keep_alive_running && std::chrono::steady_clock::now() - attempt_start < std::chrono::seconds(TCU_ACTIVITY_ATTEMPT_INTERVAL))
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
@@ -132,7 +132,7 @@ void Node::keep_alive_loop()
             }
         }
 
-        // If not get_socket acknowledgment, close connection
+        // If not get acknowledgment, close connection
         if (!ack_received)
         {
             spdlog::info("[Node::keep_alive_loop] no tcu keep-alive acknowledgment, closing connection");
@@ -140,7 +140,11 @@ void Node::keep_alive_loop()
             _keep_alive_running = false;
             _pcb.new_phase(TCU_PHASE_HOLDOFF);
 
-            std::cout << "connection closed" << std::endl;
+            std::cout << "destination node down, connection closed" << std::endl;
+        }
+        else
+        {
+            _pcb.is_active.store(false, std::memory_order_relaxed);
         }
     }
 }
@@ -197,6 +201,25 @@ void Node::send_packet(unsigned char* buff, size_t length)
         spdlog::info("[Node::send_packet] sent {} bytes to {}:{}", num_bytes, inet_ntoa(_pcb.dest_addr.sin_addr), ntohs(_pcb.dest_addr.sin_port));
     }
 }
+
+void Node::wait_for_ack()
+{
+    spdlog::info("[Node::wait_for_ack] waiting for tcu acknowledgment");
+
+    auto start_time = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_ACTIVITY_ATTEMPT_INTERVAL))
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    if (!_pcb.is_activity_recent())
+    {
+        spdlog::info("[Node::wait_for_ack] no tcu acknowledgment, closing connection");
+        _pcb.new_phase(TCU_PHASE_HOLDOFF);
+        std::cout << "destination node down, connection closed" << std::endl;
+    }
+}
+
 
 void Node::fsm_process(unsigned char* buff, size_t length)
 {
@@ -475,6 +498,8 @@ void Node::send_tcu_conn_req()
         send_packet(packet.to_buff(), TCU_HDR_LEN);
 
         _pcb.new_phase(TCU_PHASE_CONNECT);
+
+        wait_for_ack();
     }
     else
     {
@@ -523,6 +548,8 @@ void Node::send_tcu_disconn_req()
         send_packet(packet.to_buff(), TCU_HDR_LEN);
 
         _pcb.new_phase(TCU_PHASE_DISCONNECT);
+
+        wait_for_ack();
     }
     else
     {

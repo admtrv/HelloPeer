@@ -64,6 +64,8 @@ public:
     void start_keep_alive();
     void stop_keep_alive();
 
+    void wait_for_ack();
+
     void fsm_process(unsigned char* buff, size_t length);
 
     void process_tcu_conn_req(tcu_packet packet);
@@ -103,4 +105,5 @@ private:
     void keep_alive_loop();
     std::atomic<bool> _keep_alive_running;
     std::thread _keep_alive_thread;
+
 };

@@ -162,15 +162,16 @@ void CLI::run()
 
 void CLI::display_help() {
     std::cout << "commands:\n"
-              << " proc node port <port>        - set source node port will listen\n"
-              << " proc node dest <ip>:<port>   - set destination node ip and port\n"
-              << " proc node frag size <size>   - set maximum fragment size in bytes (0," << TCU_MAX_PAYLOAD_LEN << ")\n"
-              << " proc node connect            - connect to destination node\n"
-              << " proc node disconnect         - disconnect with destination node\n"
-              << " send text <text>             - send text message to destination node\n"
-              << " set log level <level>        - set log level (trace, debug, info, warn, error, critical)\n"
-              << " show log                     - display current logs\n"
-              << " exit                         - exit application\n";
+              << "  proc node port <port>       - set source node port will listen\n"
+              << "  proc node dest <ip>:<port>  - set destination node ip and port\n"
+              << "  proc node frag size <size>  - set maximum fragment size in bytes (0," << TCU_MAX_PAYLOAD_LEN << ")\n"
+              << "  proc node connect           - connect to destination node\n"
+              << "  proc node disconnect        - disconnect with destination node\n"
+              << "  send text <text>            - send text message to destination node\n"
+              << "  set log level <level>       - set log level (trace, debug, info, warn, error, critical)\n"
+              << "  show log                    - display current logs\n"
+              << "  exit                        - exit application\n"
+              << "\n";
 }
 
 void CLI::display_header()

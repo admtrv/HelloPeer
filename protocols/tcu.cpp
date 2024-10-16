@@ -186,13 +186,16 @@ void tcu_pcb::new_phase(int new_phase)
 
 void tcu_pcb::update_last_activity()
 {
-    last_activity = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> lock(activity_mutex);
+    last_activity.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
 }
 
 bool tcu_pcb::is_activity_recent() const
 {
+    std::lock_guard<std::mutex> lock(activity_mutex);
+    auto last = last_activity.load(std::memory_order_relaxed);
     auto now = std::chrono::steady_clock::now();
-    return (now - last_activity) < std::chrono::seconds(TCU_KA_ATTEMPT_COUNT * TCU_KA_ATTEMPT_INTERVAL);
+    return (now - last) < std::chrono::seconds(TCU_ACTIVITY_ATTEMPT_COUNT * TCU_ACTIVITY_ATTEMPT_INTERVAL);
 }
 
 void tcu_pcb::set_max_frag_size(size_t size)
