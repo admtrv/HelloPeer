@@ -62,20 +62,24 @@ unsigned char* tcu_packet::to_buff()
     size_t offset = 0;
 
     // Length
-    std::memcpy(buffer + offset, &header.length, sizeof(header.length));
-    offset += sizeof(header.length);
+    uint16_t length_net = htons(header.length);
+    std::memcpy(buffer + offset, &length_net, sizeof(length_net));
+    offset += sizeof(length_net);
 
     // Flags
-    std::memcpy(buffer + offset, &header.flags, sizeof(header.flags));
-    offset += sizeof(header.flags);
+    uint16_t flags_net = htons(header.flags);
+    std::memcpy(buffer + offset, &flags_net, sizeof(flags_net));
+    offset += sizeof(flags_net);
 
     // Sequence Number
-    std::memcpy(buffer + offset, &header.seq_number, sizeof(header.seq_number));
-    offset += sizeof(header.seq_number);
+    uint16_t seq_number_net = htons(header.seq_number);
+    std::memcpy(buffer + offset, &seq_number_net, sizeof(seq_number_net));
+    offset += sizeof(seq_number_net);
 
     // Checksum
-    std::memcpy(buffer + offset, &header.checksum, sizeof(header.checksum));
-    offset += sizeof(header.checksum);
+    uint16_t checksum_net = htons(header.checksum);
+    std::memcpy(buffer + offset, &checksum_net, sizeof(checksum_net));
+    offset += sizeof(checksum_net);
 
     // Payload
     std::memcpy(buffer + offset, payload, header.length);
@@ -90,25 +94,36 @@ tcu_packet tcu_packet::from_buff(unsigned char* buff)
     size_t offset = 0;
 
     // Length
-    std::memcpy(&packet.header.length, buff + offset, sizeof(packet.header.length));
-    offset += sizeof(packet.header.length);
+    uint16_t length_net;
+    std::memcpy(&length_net, buff + offset, sizeof(length_net));
+    packet.header.length = ntohs(length_net);
+    offset += sizeof(length_net);
 
     // Flags
-    std::memcpy(&packet.header.flags, buff + offset, sizeof(packet.header.flags));
-    offset += sizeof(packet.header.flags);
+    uint16_t flags_net;
+    std::memcpy(&flags_net, buff + offset, sizeof(flags_net));
+    packet.header.flags = ntohs(flags_net);
+    offset += sizeof(flags_net);
 
     // Sequence Number
-    std::memcpy(&packet.header.seq_number, buff + offset, sizeof(packet.header.seq_number));
-    offset += sizeof(packet.header.seq_number);
+    uint16_t seq_number_net;
+    std::memcpy(&seq_number_net, buff + offset, sizeof(seq_number_net));
+    packet.header.seq_number = ntohs(seq_number_net);
+    offset += sizeof(seq_number_net);
 
     // Checksum
-    std::memcpy(&packet.header.checksum, buff + offset, sizeof(packet.header.checksum));
-    offset += sizeof(packet.header.checksum);
+    uint16_t checksum_net;
+    std::memcpy(&checksum_net, buff + offset, sizeof(checksum_net));
+    packet.header.checksum = ntohs(checksum_net);
+    offset += sizeof(checksum_net);
 
     // Payload
-    packet.payload = new unsigned char[packet.header.length];
-    std::memcpy(packet.payload, buff + offset, packet.header.length);
-
+    if (packet.header.length > 0)
+    {
+        packet.payload = new unsigned char[packet.header.length];
+        std::memcpy(packet.payload, buff + offset, packet.header.length);
+    }
+    
     return packet;
 }
 
