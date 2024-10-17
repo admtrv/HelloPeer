@@ -198,6 +198,7 @@ void CLI::display_header()
               << "\n"
               << "p2p application version " << VERSION << " built on " << __DATE__ << " " << __TIME__ << " by " << user << " commit " << commit << "\n"
               << "Copyright (c) 2024 Anton Dmitriev. Licensed under the MIT License.\n"
+              << "source 'https://github.com/admtrv/HelloPeer'\n"
               << "type 'help' to see available commands\n"
               << "\n";
 }
