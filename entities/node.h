@@ -39,7 +39,10 @@ public:
             exit(EXIT_FAILURE);
         }
 
-        start_receiving();
+        if (_pcb.dest_port != 0 && _pcb.dest_ip.s_addr != 0)
+        {
+            start_receiving();
+        }
     }
 
     inline void set_dest(in_addr ip, uint16_t port)
@@ -49,6 +52,11 @@ public:
         _pcb.dest_addr.sin_family = AF_INET;
         _pcb.dest_addr.sin_port = htons(_pcb.dest_port);
         _pcb.dest_addr.sin_addr = _pcb.dest_ip;
+
+        if (_pcb.src_port != 0)
+        {
+            start_receiving();
+        }
     }
 
     tcu_pcb &get_pcb();
