@@ -210,6 +210,11 @@ void Node::wait_for_ack()
     while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_ACTIVITY_ATTEMPT_INTERVAL))
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        if (_pcb.is_activity_recent())
+        {
+            break;
+        }
     }
 
     if (!_pcb.is_activity_recent())
@@ -394,10 +399,19 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
 
         _pcb.window[packet.header.seq_number] = packet;
 
-        for (const auto& entry : _pcb.window)
+        uint16_t first_seq = _pcb.window.begin()->first;
+        uint16_t last_seq = _pcb.window.rbegin()->first;
+        for (uint16_t seq_num = first_seq; seq_num <= last_seq; ++seq_num)
         {
-            tcu_packet frag = entry.second;
+            auto it = _pcb.window.find(seq_num);
+            if (it == _pcb.window.end())
+            {
+                spdlog::warn("[Node::process_tcu_last_frag_text] missing fragment {}", seq_num);
+                send_tcu_negative_ack(seq_num);
+                return;
+            }
 
+            tcu_packet frag = it->second;
             if (!frag.validate_crc())
             {
                 spdlog::warn("[Node::process_tcu_last_frag_text] invalid checksum in fragment {}", frag.header.seq_number);
@@ -406,7 +420,7 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
             }
         }
 
-        send_tcu_positive_ack(0);
+        send_tcu_positive_ack(last_seq);
 
         std::string assembled_message;
 
