@@ -45,12 +45,6 @@
  * 4. Checksum:
  *    - Checksum used to verify the integrity of the packet, including the header and payload
  *    - This is calculated using the CRC16-CCITT algorithm over both the header and the payload
-
- * Data Flow:
- *    - For connection initiation, a SYN packet is sent
- *    - The receiver responds with an ACK to confirm receipt of the SYN
- *    - For fragmented messages, multiple packets are sent, with the DF and MF flags controlling
- *    - If an error is detected (CRC mismatch), the receiver sends a NACK with the sequence number of the corrupted fragment
  *
  * Data Flow:
  *    - Connection is initiated with a SYN packet from the sender
@@ -87,7 +81,7 @@
  * 11. Fragment of File — MF + FL, LEN
  * 12. Last Fragment of File — FL, LEN
  *
- * 13. Acknowledgment - ACK, LEN 0, SEQ NUM 0
+ * 13. Acknowledgment - ACK, LEN 0, SEQ NUM
  * 14. Negative Acknowledgment — NACK, LEN 0, SEQ NUM [ERR FRG]
  */
 
