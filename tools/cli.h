@@ -20,7 +20,7 @@ public:
 
 private:
     Node* _node;
-    static void display_help();
+    void display_help();
     static void display_header();
 };
 

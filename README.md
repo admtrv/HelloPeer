@@ -99,6 +99,7 @@ To send a message:
 
 ```bash
 send text Hello Peer!
+send file /home/admtrv/file.txt
 ```
 
 To disconnect:

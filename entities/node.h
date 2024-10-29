@@ -16,8 +16,15 @@
 #include <fcntl.h>
 #include <condition_variable>
 #include <spdlog/spdlog.h>
+#include <fstream>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <cerrno>
+#include <cstring>
+
 
 #include "../protocols/tcu.h"
+#include "file.h"
 #include "socket.h"
 
 class Node {
@@ -25,46 +32,20 @@ public:
     Node();
     ~Node();
 
-    inline void set_port(uint16_t port)
-    {
-        _pcb.src_port = port;
-        sockaddr_in local_addr{};
-        local_addr.sin_family = AF_INET;
-        local_addr.sin_port = htons(_pcb.src_port);
-        local_addr.sin_addr.s_addr = INADDR_ANY;
+    inline tcu_pcb &get_pcb(){ return _pcb; };
+    inline std::string get_path(){ return _file_path; };
 
-        if (bind(_socket.get_socket(), reinterpret_cast<struct sockaddr*>(&local_addr), sizeof(local_addr)) < 0)
-        {
-            perror("bind");
-            exit(EXIT_FAILURE);
-        }
-
-        if (_pcb.dest_port != 0 && _pcb.dest_ip.s_addr != 0)
-        {
-            start_receiving();
-        }
-    }
-
-    inline void set_dest(in_addr ip, uint16_t port)
-    {
-        _pcb.dest_ip = ip;
-        _pcb.dest_port = port;
-        _pcb.dest_addr.sin_family = AF_INET;
-        _pcb.dest_addr.sin_port = htons(_pcb.dest_port);
-        _pcb.dest_addr.sin_addr = _pcb.dest_ip;
-
-        if (_pcb.src_port != 0)
-        {
-            start_receiving();
-        }
-    }
-
-    tcu_pcb &get_pcb();
+    void set_port(uint16_t port);
+    void set_dest(in_addr ip, uint16_t port);
+    void set_path(std::string& path);
 
     void send_packet(unsigned char* buff, size_t length);    // Function to send packet
     void receive_packet();                                   // Function to receive packet
 
+    void save_file(const File& file);
+
     void send_text(const std::string& message);
+    void send_file(const std::string& path);
 
     void start_receiving();
     void stop_receiving();
@@ -85,6 +66,9 @@ public:
     void process_tcu_single_text(tcu_packet packet);
     void process_tcu_more_frag_text(tcu_packet packet);
     void process_tcu_last_frag_text(tcu_packet packet);
+    void process_tcu_single_file(tcu_packet packet);
+    void process_tcu_more_frag_file(tcu_packet packet);
+    void process_tcu_last_frag_file(tcu_packet packet);
     void process_tcu_positive_ack(tcu_packet packet);
     void process_tcu_negative_ack(tcu_packet packet);
 
@@ -114,4 +98,6 @@ private:
     std::atomic<bool> _keep_alive_running;
     std::thread _keep_alive_thread;
 
+    /* File saving params*/
+    std::string _file_path;
 };

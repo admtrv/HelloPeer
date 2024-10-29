@@ -87,6 +87,12 @@ void CLI::run()
             }
         }
 
+        else if (command.substr(0, 20) == "proc node file path ")
+        {
+            std::string path = command.substr(20);
+            _node->set_path(path);
+        }
+
         else if (command == "proc node connect")
         {
             _node->send_tcu_conn_req();
@@ -148,6 +154,12 @@ void CLI::run()
             _node->send_text(message);
         }
 
+        else if (command.substr(0, 10) == "send file ")
+        {
+            std::string file_path = command.substr(10);
+            _node->send_file(file_path);
+        }
+
         else if (command.empty())
         {
             continue;
@@ -165,9 +177,11 @@ void CLI::display_help() {
               << "  proc node port <port>       - set source node port will listen\n"
               << "  proc node dest <ip>:<port>  - set destination node ip and port\n"
               << "  proc node frag size <size>  - set maximum fragment size in bytes (0," << TCU_MAX_PAYLOAD_LEN << ")\n"
+              << "  proc node file path <path>  - set file save path for received files (default " << _node->get_path() << ")\n"
               << "  proc node connect           - connect to destination node\n"
               << "  proc node disconnect        - disconnect with destination node\n"
               << "  send text <text>            - send text message to destination node\n"
+              << "  send file <path>            - send file message to destination node\n"
               << "  set log level <level>       - set log level (trace, debug, info, warn, error, critical)\n"
               << "  show log                    - display current logs\n"
               << "  exit                        - exit application\n"

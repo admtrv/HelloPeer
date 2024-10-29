@@ -17,11 +17,16 @@ Node::Node() : _socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP), _receive_running(false
     {
         exit(EXIT_FAILURE);
     }
-}
 
-tcu_pcb &Node::get_pcb()
-{
-    return _pcb;
+    const char* home_dir = std::getenv("HOME");
+    if (home_dir != nullptr)
+    {
+        _file_path = std::string(home_dir) + "/recv";
+    }
+    else
+    {
+        _file_path = "./recv";
+    }
 }
 
 Node::~Node()
@@ -31,6 +36,63 @@ Node::~Node()
     stop_receiving();
     stop_keep_alive();
     _socket.close_socket();
+}
+
+void Node::set_port(uint16_t port)
+{
+    _pcb.src_port = port;
+    sockaddr_in local_addr{};
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_port = htons(_pcb.src_port);
+    local_addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(_socket.get_socket(), reinterpret_cast<struct sockaddr*>(&local_addr), sizeof(local_addr)) < 0)
+    {
+        perror("bind");
+        exit(EXIT_FAILURE);
+    }
+
+    if (_pcb.dest_port != 0 && _pcb.dest_ip.s_addr != 0)
+    {
+        start_receiving();
+    }
+}
+
+void Node::set_dest(in_addr ip, uint16_t port)
+{
+    _pcb.dest_ip = ip;
+    _pcb.dest_port = port;
+    _pcb.dest_addr.sin_family = AF_INET;
+    _pcb.dest_addr.sin_port = htons(_pcb.dest_port);
+    _pcb.dest_addr.sin_addr = _pcb.dest_ip;
+
+    if (_pcb.src_port != 0)
+    {
+        start_receiving();
+    }
+}
+
+void Node::set_path(std::string& path)
+{
+    struct stat info;
+
+    if (stat(_file_path.c_str(), &info) != 0)
+    {
+        if (mkdir(_file_path.c_str(), 0777) != 0)
+        {
+            spdlog::error("[Node::set_path] cannot create directory {}", _file_path);
+            std::cout << "invalid path" << std::endl;
+            return;
+        }
+    }
+    else if (!(info.st_mode & S_IFDIR))
+    {
+        spdlog::error("[Node::set_path] {} not directory", _file_path);
+        std::cout << "invalid path" << std::endl;
+        return;
+    }
+
+    _file_path = path;
 }
 
 void Node::start_receiving()
@@ -225,6 +287,40 @@ void Node::wait_for_ack()
     }
 }
 
+void Node::save_file(const File& file)
+{
+    struct stat info;
+
+    if (stat(_file_path.c_str(), &info) != 0)
+    {
+        if (mkdir(_file_path.c_str(), 0777) != 0)
+        {
+            spdlog::error("[Node::save_file] cannot create directory {}", _file_path);
+            std::cout << "invalid path" << std::endl;
+            return;
+        }
+    }
+    else if (!(info.st_mode & S_IFDIR))
+    {
+        spdlog::error("[Node::save_file] {} not directory", _file_path);
+        std::cout << "invalid path" << std::endl;
+        return;
+    }
+
+    std::string save_path = _file_path + '/' + file.get_header().file_name;
+
+    std::ofstream outfile(save_path, std::ios::binary);
+    if (!outfile)
+    {
+        spdlog::error("[Node::save_file] cannot open file for writing {}", save_path);
+        return;
+    }
+
+    outfile.write(reinterpret_cast<const char*>(file.get_data()), file.get_size());
+    outfile.close();
+
+    std::cout << "received file " << save_path << std::endl;
+}
 
 void Node::fsm_process(unsigned char* buff, size_t length)
 {
@@ -260,6 +356,15 @@ void Node::fsm_process(unsigned char* buff, size_t length)
             break;
         case TCU_HDR_NO_FLAG:
             process_tcu_last_frag_text(packet);
+            break;
+        case (TCU_HDR_FLAG_DF | TCU_HDR_FLAG_FL):
+            process_tcu_single_file(packet);
+            break;
+        case (TCU_HDR_FLAG_MF | TCU_HDR_FLAG_FL):
+            process_tcu_more_frag_file(packet);
+            break;
+        case TCU_HDR_FLAG_FL:
+            process_tcu_last_frag_file(packet);
             break;
         case TCU_HDR_FLAG_NACK:
             process_tcu_negative_ack(packet);
@@ -442,6 +547,111 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
         exit(EXIT_FAILURE);
     }
 }
+
+void Node::process_tcu_single_file(tcu_packet packet)
+{
+    if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
+    {
+        spdlog::info("[Node::process_tcu_single_file] received tcu single file");
+
+        if (!packet.validate_crc())
+        {
+            spdlog::warn("[Node::process_tcu_single_file] invalid checksum");
+            send_tcu_negative_ack(packet.header.seq_number);
+            return;
+        }
+
+        File file = File::from_buff(packet.payload);
+
+        save_file(file);
+
+        send_tcu_positive_ack(0);
+    }
+    else
+    {
+        spdlog::error("[Node::process_tcu_single_file] unexpected phase {}", _pcb.phase);
+        exit(EXIT_FAILURE);
+    }
+}
+
+void Node::process_tcu_more_frag_file(tcu_packet packet)
+{
+    if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
+    {
+        spdlog::info("[Node::process_tcu_more_frag_file] received tcu file fragment {}", packet.header.seq_number);
+
+        _pcb.window[packet.header.seq_number] = packet;
+    }
+    else
+    {
+        spdlog::error("[Node::process_tcu_more_frag_file] unexpected phase {}", _pcb.phase);
+        exit(EXIT_FAILURE);
+    }
+}
+
+void Node::process_tcu_last_frag_file(tcu_packet packet)
+{
+    if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
+    {
+        spdlog::info("[Node::process_tcu_last_frag_file] received tcu last file fragment {}", packet.header.seq_number);
+
+        _pcb.window[packet.header.seq_number] = packet;
+
+        uint16_t first_seq = _pcb.window.begin()->first;
+        uint16_t last_seq = _pcb.window.rbegin()->first;
+
+        for (uint16_t seq_num = first_seq; seq_num <= last_seq; ++seq_num)
+        {
+            auto it = _pcb.window.find(seq_num);
+            if (it == _pcb.window.end())
+            {
+                spdlog::warn("[Node::process_tcu_last_frag_file] missing fragment {}", seq_num);
+                send_tcu_negative_ack(seq_num);
+                return;
+            }
+
+            tcu_packet frag = it->second;
+            if (!frag.validate_crc())
+            {
+                spdlog::warn("[Node::process_tcu_last_frag_file] invalid checksum in fragment {}", frag.header.seq_number);
+                send_tcu_negative_ack(frag.header.seq_number);
+                return;
+            }
+        }
+
+        size_t total_size = 0;
+        for (const auto& entry : _pcb.window)
+        {
+            total_size += entry.second.header.length;
+        }
+
+        unsigned char* full_data = new unsigned char[total_size];
+        size_t offset = 0;
+
+        for (const auto& entry : _pcb.window)
+        {
+            const tcu_packet& frag = entry.second;
+            std::memcpy(full_data + offset, frag.payload, frag.header.length);
+            offset += frag.header.length;
+        }
+
+        File file = File::from_buff(full_data);
+
+        save_file(file);
+
+        delete[] full_data;
+
+        _pcb.window.clear();
+
+        send_tcu_positive_ack(last_seq);
+    }
+    else
+    {
+        spdlog::error("[Node::process_tcu_last_frag_file] unexpected phase {}", _pcb.phase);
+        exit(EXIT_FAILURE);
+    }
+}
+
 
 void Node::process_tcu_negative_ack(tcu_packet packet)
 {
@@ -705,6 +915,106 @@ void Node::send_text(const std::string& message)
                 offset += fragment_size;
             }
         }
+    }
+    else
+    {
+        std::cout << "connection not established" << std::endl;
+    }
+}
+
+void Node::send_file(const std::string& file_path)
+{
+    if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
+    {
+        std::ifstream file_stream(file_path, std::ios::binary | std::ios::ate);
+        if (!file_stream)
+        {
+            std::cout << "error file opening" << std::endl;
+            return;
+        }
+
+        // File size
+        std::streamsize file_size = file_stream.tellg();
+        file_stream.seekg(0, std::ios::beg);
+
+        // File data
+        std::vector<unsigned char> file_data(static_cast<size_t>(file_size));
+        if (!file_stream.read(reinterpret_cast<char*>(file_data.data()), file_size))
+        {
+            std::cout << "error file reading" << std::endl;
+            return;
+        }
+
+        // File name
+        std::string file_name = file_path.substr(file_path.find_last_of("/\\") + 1);
+
+        // Creating file object
+        File file(file_name.c_str(), file_data.data(), static_cast<uint32_t>(file_size));
+
+        // File to buff
+        unsigned char* file_buffer = file.to_buff();
+        size_t total_size = sizeof(FileHeader) + file.get_size();
+
+        size_t max_payload_size = _pcb.max_frag_size;
+
+        if (total_size <= max_payload_size)
+        {
+            // DF + FL
+            tcu_packet packet{};
+            packet.header.flags = TCU_HDR_FLAG_DF | TCU_HDR_FLAG_FL;
+            packet.header.length = static_cast<uint16_t>(total_size);
+            packet.header.seq_number = 0;
+            packet.payload = new unsigned char[total_size];
+            std::memcpy(packet.payload, file_buffer, total_size);
+
+            packet.calculate_crc();
+
+            _pcb.window[packet.header.seq_number] = packet;
+
+            spdlog::info("[Node::send_file] sent tcu single file size {}", total_size);
+
+            send_packet(packet.to_buff(), TCU_HDR_LEN + total_size);
+        }
+        else
+        {
+            // Fragmented
+            size_t offset = 0;
+            uint16_t seq_number = 1;
+            size_t remaining_size = total_size;
+
+            while (remaining_size > 0)
+            {
+                size_t fragment_size = std::min(max_payload_size, remaining_size);
+
+                tcu_packet packet{};
+                packet.header.length = static_cast<uint16_t>(fragment_size);
+                packet.header.seq_number = seq_number++;
+                packet.payload = new unsigned char[fragment_size];
+                std::memcpy(packet.payload, file_buffer + offset, fragment_size);
+
+                if (remaining_size == fragment_size)
+                {
+                    packet.header.flags = TCU_HDR_FLAG_FL;
+                }
+                else
+                {
+                    packet.header.flags = TCU_HDR_FLAG_MF | TCU_HDR_FLAG_FL;
+                }
+
+                packet.calculate_crc();
+
+                _pcb.window[packet.header.seq_number] = packet;
+
+                spdlog::info("[Node::send_file] sent tcu file fragment {} size {}", packet.header.seq_number, fragment_size);
+
+                send_packet(packet.to_buff(), TCU_HDR_LEN + fragment_size);
+
+                offset += fragment_size;
+                remaining_size -= fragment_size;
+            }
+        }
+
+        delete[] file_buffer;
     }
     else
     {
