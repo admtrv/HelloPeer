@@ -470,7 +470,7 @@ void Node::process_tcu_single_text(tcu_packet packet)
         }
 
         std::string message(reinterpret_cast<char*>(packet.payload), packet.header.length);
-        std::cout << "received text: " << message << std::endl;
+        std::cout << "received text " << message << std::endl;
 
         send_tcu_positive_ack(0);
     }
@@ -537,7 +537,7 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
             assembled_message.append(reinterpret_cast<char*>(frag.payload), frag.header.length);
         }
 
-        std::cout << "received text: " << assembled_message << std::endl;
+        std::cout << "received text " << assembled_message << std::endl;
 
         _pcb.window.clear();
     }
