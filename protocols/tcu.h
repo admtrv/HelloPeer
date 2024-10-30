@@ -16,15 +16,15 @@
  *                      1 1 1 1 1 1 1 1 1 1 2 2 2 2 2 2 2 2 2 2 3 3
  *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- * |            Length             |            Flags              |
+ * |               Sequence Number                 |     Flags     |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- * |       Sequence Number         |           Checksum            |
+ * |             Length            |           Checksum            |
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  *
- * 1. Length:
- *    - Length of the payload in bytes
- *    - Since the UDP payload is limited to 65507 bytes, 16-bit field is sufficient
- *    - This value includes only the payload size, not the header size
+ * 1. Sequence Number:
+ *    - Sequence number of the packet
+ *    - Ensures that receiver can reassemble data, even if fragments arrive out of order
+ *    - When message is fragmented, each fragment has its own sequence number
  *
  * 2. Flags:
  *    - Control flags that are used to indicate the packet's state:
@@ -37,10 +37,9 @@
  *        7) FL (File Message) - Packet is file message
  *        8) KA (Keep-Alive Message) - Packet is heart-beat message
  *
- * 3. Sequence Number:
- *    - Sequence number of the packet
- *    - Ensures that receiver can reassemble data, even if fragments arrive out of order
- *    - When message is fragmented, each fragment has its own sequence number
+ * 3. Length:
+ *    - Length of the payload in bytes
+ *    - This value includes only the payload size, not the header size
  *
  * 4. Checksum:
  *    - Checksum used to verify the integrity of the packet, including the header and payload
@@ -96,6 +95,8 @@
 #include <spdlog/spdlog.h>
 #include <map>
 
+#include "../types/uint24_t.h"
+
 #define TCU_PHASE_DEAD          0
 #define TCU_PHASE_HOLDOFF       1
 #define TCU_PHASE_INITIALIZE    2
@@ -114,18 +115,20 @@
 #define TCU_HDR_FLAG_FL         0x40
 #define TCU_HDR_FLAG_KA         0x80
 
-#define UDP_MAX_PAYLOAD_LEN     65507
+#define ETH2_MAX_PAYLOAD_LEN    1500
+#define IPV4_HDR_LEN            20
+#define UDP_HDR_LEN             8
 #define TCU_HDR_LEN             8
-#define TCU_MAX_PAYLOAD_LEN     (UDP_MAX_PAYLOAD_LEN - TCU_HDR_LEN)
+#define TCU_MAX_PAYLOAD_LEN     (ETH2_MAX_PAYLOAD_LEN - IPV4_HDR_LEN - UDP_HDR_LEN - TCU_HDR_LEN)
 
 #define TCU_ACTIVITY_TIMEOUT_INTERVAL   300     // 5 minutes (300 seconds) without activities
 #define TCU_ACTIVITY_ATTEMPT_COUNT      3       // Number of attempts
 #define TCU_ACTIVITY_ATTEMPT_INTERVAL   5       // 5 second interval between attempts
 
 struct tcu_header {
+    uint24_t seq_number;        // Sequence packet number
+    uint8_t flags;              // Flags
     uint16_t length;            // Payload length
-    uint16_t flags;             // Flags
-    uint16_t seq_number;        // Sequence packet number
     uint16_t checksum;          // CRC sum
 };
 
@@ -155,7 +158,7 @@ struct tcu_pcb {
 
     /* Message params*/
     size_t max_frag_size = TCU_MAX_PAYLOAD_LEN;     // Maximum size of fragmented message
-    std::map<uint16_t, tcu_packet> window;          // Window for fragments and Selective Repeat (SR)
+    std::map<uint24_t, tcu_packet> window;          // Window for fragments and Selective Repeat (SR)
 
     /* Source node params */
     uint16_t src_port;

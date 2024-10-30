@@ -5,22 +5,20 @@ tcu_proto = Proto("tcu", "Transmission Control over UDP Protocol")
 
 -- Creating fields
 local fields = tcu_proto.fields
+fields.seq_num = ProtoField.uint24("tcu.seq_num", "Sequence Number", base.DEC)
+fields.flags = ProtoField.uint8("tcu.flags", "Flags", base.HEX)
 fields.length = ProtoField.uint16("tcu.length", "Payload Length", base.DEC)
-fields.flags = ProtoField.uint16("tcu.flags", "Flags", base.HEX)
-fields.seq_num = ProtoField.uint16("tcu.seq_num", "Sequence Number", base.DEC)
 fields.checksum = ProtoField.uint16("tcu.checksum", "Checksum", base.HEX)
 
--- Creating flags
-local FLAGS = {
-    [0x01] = "SYN",
-    [0x02] = "ACK",
-    [0x04] = "FIN",
-    [0x08] = "NACK",
-    [0x10] = "DF",
-    [0x20] = "MF",
-    [0x40] = "FL",
-    [0x80] = "KA"
-}
+-- Flags definitions
+local SYN  = 0x01
+local ACK  = 0x02
+local FIN  = 0x04
+local NACK = 0x08
+local DF   = 0x10
+local MF   = 0x20
+local FL   = 0x40
+local KA   = 0x80
 
 -- Function to parse protocol
 function tcu_proto.dissector(buffer, pinfo, tree)
@@ -28,69 +26,85 @@ function tcu_proto.dissector(buffer, pinfo, tree)
 
     -- Checking length (8 bytes)
     if buffer:len() < 8 then 
-    	return 
+    	return
     end
 
     -- Adding protocol tree
     local subtree = tree:add(tcu_proto, buffer(), "Transmission Control over UDP Protocol")
 
-    -- Length
-    local length = buffer(0, 2):uint()
-    subtree:add(fields.length, buffer(0, 2))
-        
-    -- Flags
-    local flags_field = buffer(2, 2)
-    local flags_val = flags_field:uint()
-    local flags_str = {}
-    for flag, name in pairs(FLAGS) do
-        if bit.band(flags_val, flag) > 0 then
-            table.insert(flags_str, name)
-        end
-    end
-    if #flags_str == 0 then
-    	   table.insert(flags_str, "NO FLAG")
-    end
-    subtree:add(fields.flags, flags_field):append_text(" (" .. table.concat(flags_str, ", ") .. ")")
+    local offset = 0
 
-    -- Sequence number
-    local seq_num = buffer(4, 2):uint()
-    subtree:add(fields.seq_num, buffer(4, 2))
-    
-    -- Checksum
-    local checksum = buffer(6, 2):uint()
-    subtree:add(fields.checksum, buffer(6, 2))
-    
-    -- Determine packet type 
-    local info_str = string.format("%d -> %d ", pinfo.src_port, pinfo.dst_port)
-    
-    if bit.band(flags_val, 0x01) > 0 and bit.band(flags_val, 0x02) > 0 then
+    -- Sequence Number (3 bytes)
+    local seq_num_field = buffer(offset, 3)
+    local seq_num = seq_num_field:uint()
+    subtree:add(fields.seq_num, seq_num_field)
+    offset = offset + 3
+
+    -- Flags (1 byte)
+    local flags_field = buffer(offset, 1)
+    local flags_val = flags_field:uint()
+    local flags_str_list = {}
+    local function has_flag(flag)
+        return bit.band(flags_val, flag) > 0
+    end
+    if has_flag(SYN) then table.insert(flags_str_list, "SYN") end
+    if has_flag(ACK) then table.insert(flags_str_list, "ACK") end
+    if has_flag(FIN) then table.insert(flags_str_list, "FIN") end
+    if has_flag(NACK) then table.insert(flags_str_list, "NACK") end
+    if has_flag(DF) then table.insert(flags_str_list, "DF") end
+    if has_flag(MF) then table.insert(flags_str_list, "MF") end
+    if has_flag(FL) then table.insert(flags_str_list, "FL") end
+    if has_flag(KA) then table.insert(flags_str_list, "KA") end
+    if #flags_str_list == 0 then
+        table.insert(flags_str_list, "NO FLAG")
+    end
+    local flags_str = table.concat(flags_str_list, ", ")
+    subtree:add(fields.flags, flags_field):append_text(" (" .. flags_str .. ")")
+    offset = offset + 1
+
+    -- Length (2 bytes)
+    local length_field = buffer(offset, 2)
+    local length = length_field:uint()
+    subtree:add(fields.length, length_field)
+    offset = offset + 2
+
+    -- Checksum (2 bytes)
+    local checksum_field = buffer(offset, 2)
+    local checksum = checksum_field:uint()
+    subtree:add(fields.checksum, checksum_field)
+    offset = offset + 2
+
+    -- Determine packet type
+    local info_str = string.format("%d → %d ", pinfo.src_port, pinfo.dst_port)
+
+    if has_flag(SYN) and has_flag(ACK) then
         info_str = info_str .. "Connection Acknowledgment"
-    elseif bit.band(flags_val, 0x01) > 0 then
+    elseif has_flag(SYN) then
         info_str = info_str .. "Connection Request"
-    elseif bit.band(flags_val, 0x04) > 0 and bit.band(flags_val, 0x02) > 0 then
+    elseif has_flag(FIN) and has_flag(ACK) and length == 0 then
         info_str = info_str .. "Disconnection Acknowledgment"
-    elseif bit.band(flags_val, 0x04) > 0 then
+    elseif has_flag(FIN) and length == 0 then
         info_str = info_str .. "Disconnection Request"
-    elseif bit.band(flags_val, 0x80) > 0 and bit.band(flags_val, 0x02) > 0 then
+    elseif has_flag(KA) and has_flag(ACK) and length == 0 then
         info_str = info_str .. "Keep-Alive Acknowledgment"
-    elseif bit.band(flags_val, 0x80) > 0 then
+    elseif has_flag(KA) and length == 0 then
         info_str = info_str .. "Keep-Alive Request"
-    elseif bit.band(flags_val, 0x10) > 0 and bit.band(flags_val, 0x40) == 0 then
-        info_str = info_str .. "Single Text Message"
-    elseif bit.band(flags_val, 0x10) > 0 and bit.band(flags_val, 0x40) > 0 then
-        info_str = info_str .. "Single File Message"
-    elseif bit.band(flags_val, 0x20) > 0 and bit.band(flags_val, 0x40) == 0 then
-        info_str = info_str .. "Fragment of Text Message " .. tostring(seq_num)
-    elseif bit.band(flags_val, 0x20) > 0 and bit.band(flags_val, 0x40) > 0 then
-        info_str = info_str .. "Fragment of File Message " .. tostring(seq_num)
-    elseif flags_val == 0 and bit.band(flags_val, 0x40) == 0 then
-        info_str = info_str .. "Last Fragment of Text Message " .. tostring(seq_num)
-    elseif flags_val == 0 and bit.band(flags_val, 0x40) > 0 then
-        info_str = info_str .. "Last Fragment of File Message " .. tostring(seq_num)
-    elseif bit.band(flags_val, 0x08) > 0 then
+    elseif has_flag(ACK) and length == 0 then
+        info_str = info_str .. "Positive Acknowledgment " .. tostring(seq_num)
+    elseif has_flag(NACK) and length == 0 then
         info_str = info_str .. "Negative Acknowledgment " .. tostring(seq_num)
-    elseif bit.band(flags_val, 0x02) > 0 then
-        info_str = info_str .. "Acknowledgment"
+    elseif has_flag(DF) and has_flag(FL) then
+        info_str = info_str .. "Single File Message"
+    elseif has_flag(DF) then
+        info_str = info_str .. "Single Text Message"
+    elseif has_flag(MF) and has_flag(FL) then
+        info_str = info_str .. "Fragment of File Message " .. tostring(seq_num)
+    elseif has_flag(MF) then
+        info_str = info_str .. "Fragment of Text Message " .. tostring(seq_num)
+    elseif has_flag(FL) and not (has_flag(DF) or has_flag(MF)) then
+        info_str = info_str .. "Last Fragment of File Message " .. tostring(seq_num)
+    elseif not (has_flag(DF) or has_flag(MF) or has_flag(FL)) then
+        info_str = info_str .. "Last Fragment of Text Message " .. tostring(seq_num)
     else
         info_str = info_str .. "Unknown Packet Type"
     end

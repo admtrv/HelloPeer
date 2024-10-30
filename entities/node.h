@@ -24,6 +24,7 @@
 
 
 #include "../protocols/tcu.h"
+#include "../types/uint24_t.h"
 #include "file.h"
 #include "socket.h"
 
@@ -78,8 +79,8 @@ public:
     void send_tcu_disconn_ack();
     void send_keep_alive_req();
     void send_keep_alive_ack();
-    void send_tcu_negative_ack(uint16_t seq_number);
-    void send_tcu_positive_ack(uint16_t seq_number);
+    void send_tcu_negative_ack(uint24_t seq_number);
+    void send_tcu_positive_ack(uint24_t seq_number);
 
 private:
     /* Socket control block */

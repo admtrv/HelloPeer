@@ -61,22 +61,22 @@ unsigned char* tcu_packet::to_buff()
     unsigned char* buffer = new unsigned char[total_size];
     size_t offset = 0;
 
-    // Length
+    // Sequence Number (3 bytes)
+    uint24_t seq_number_net = hton24(header.seq_number);
+    std::memcpy(buffer + offset, &seq_number_net, sizeof(seq_number_net));
+    offset += sizeof(seq_number_net);
+
+    // Flags (1 byte)
+    uint8_t flags_net = header.flags;
+    std::memcpy(buffer + offset, &flags_net, sizeof(flags_net));
+    offset += sizeof(flags_net);
+
+    // Length (2 bytes)
     uint16_t length_net = htons(header.length);
     std::memcpy(buffer + offset, &length_net, sizeof(length_net));
     offset += sizeof(length_net);
 
-    // Flags
-    uint16_t flags_net = htons(header.flags);
-    std::memcpy(buffer + offset, &flags_net, sizeof(flags_net));
-    offset += sizeof(flags_net);
-
-    // Sequence Number
-    uint16_t seq_number_net = htons(header.seq_number);
-    std::memcpy(buffer + offset, &seq_number_net, sizeof(seq_number_net));
-    offset += sizeof(seq_number_net);
-
-    // Checksum
+    // Checksum (2 bytes)
     uint16_t checksum_net = htons(header.checksum);
     std::memcpy(buffer + offset, &checksum_net, sizeof(checksum_net));
     offset += sizeof(checksum_net);
@@ -93,25 +93,25 @@ tcu_packet tcu_packet::from_buff(unsigned char* buff)
 
     size_t offset = 0;
 
-    // Length
+    // Sequence Number (3 bytes)
+    uint24_t seq_number_net;
+    std::memcpy(&seq_number_net, buff + offset, sizeof(seq_number_net));
+    packet.header.seq_number = ntoh24(seq_number_net);
+    offset += sizeof(seq_number_net);
+
+    // Flags (1 byte)
+    uint8_t flags_net;
+    std::memcpy(&flags_net, buff + offset, sizeof(flags_net));
+    packet.header.flags = flags_net;
+    offset += sizeof(flags_net);
+
+    // Length (2 bytes)
     uint16_t length_net;
     std::memcpy(&length_net, buff + offset, sizeof(length_net));
     packet.header.length = ntohs(length_net);
     offset += sizeof(length_net);
 
-    // Flags
-    uint16_t flags_net;
-    std::memcpy(&flags_net, buff + offset, sizeof(flags_net));
-    packet.header.flags = ntohs(flags_net);
-    offset += sizeof(flags_net);
-
-    // Sequence Number
-    uint16_t seq_number_net;
-    std::memcpy(&seq_number_net, buff + offset, sizeof(seq_number_net));
-    packet.header.seq_number = ntohs(seq_number_net);
-    offset += sizeof(seq_number_net);
-
-    // Checksum
+    // Checksum (2 bytes)
     uint16_t checksum_net;
     std::memcpy(&checksum_net, buff + offset, sizeof(checksum_net));
     packet.header.checksum = ntohs(checksum_net);
@@ -123,7 +123,7 @@ tcu_packet tcu_packet::from_buff(unsigned char* buff)
         packet.payload = new unsigned char[packet.header.length];
         std::memcpy(packet.payload, buff + offset, packet.header.length);
     }
-    
+
     return packet;
 }
 

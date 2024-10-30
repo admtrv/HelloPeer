@@ -504,9 +504,9 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
 
         _pcb.window[packet.header.seq_number] = packet;
 
-        uint16_t first_seq = _pcb.window.begin()->first;
-        uint16_t last_seq = _pcb.window.rbegin()->first;
-        for (uint16_t seq_num = first_seq; seq_num <= last_seq; ++seq_num)
+        uint24_t first_seq = _pcb.window.begin()->first;
+        uint24_t last_seq = _pcb.window.rbegin()->first;
+        for (uint24_t seq_num = first_seq; seq_num <= last_seq; seq_num++)
         {
             auto it = _pcb.window.find(seq_num);
             if (it == _pcb.window.end())
@@ -529,7 +529,7 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
 
         std::string assembled_message;
 
-        std::map<uint16_t, tcu_packet> sorted_fragments = _pcb.window;
+        std::map<uint24_t, tcu_packet> sorted_fragments = _pcb.window;
 
         for (const auto& entry : sorted_fragments)
         {
@@ -597,10 +597,10 @@ void Node::process_tcu_last_frag_file(tcu_packet packet)
 
         _pcb.window[packet.header.seq_number] = packet;
 
-        uint16_t first_seq = _pcb.window.begin()->first;
-        uint16_t last_seq = _pcb.window.rbegin()->first;
+        uint24_t first_seq = _pcb.window.begin()->first;
+        uint24_t last_seq = _pcb.window.rbegin()->first;
 
-        for (uint16_t seq_num = first_seq; seq_num <= last_seq; ++seq_num)
+        for (uint24_t seq_num = first_seq; seq_num <= last_seq; seq_num++)
         {
             auto it = _pcb.window.find(seq_num);
             if (it == _pcb.window.end())
@@ -619,8 +619,10 @@ void Node::process_tcu_last_frag_file(tcu_packet packet)
             }
         }
 
+        std::map<uint24_t, tcu_packet> sorted_fragments = _pcb.window;
+
         size_t total_size = 0;
-        for (const auto& entry : _pcb.window)
+        for (const auto& entry : sorted_fragments)
         {
             total_size += entry.second.header.length;
         }
@@ -628,7 +630,7 @@ void Node::process_tcu_last_frag_file(tcu_packet packet)
         unsigned char* full_data = new unsigned char[total_size];
         size_t offset = 0;
 
-        for (const auto& entry : _pcb.window)
+        for (const auto& entry : sorted_fragments)
         {
             const tcu_packet& frag = entry.second;
             std::memcpy(full_data + offset, frag.payload, frag.header.length);
@@ -657,8 +659,8 @@ void Node::process_tcu_negative_ack(tcu_packet packet)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
-        uint16_t seq_number = packet.header.seq_number;
-        spdlog::info("[Node::process_tcu_negative_ack] received tcu negative acknowledgment fragment {}", seq_number);
+        uint24_t seq_number = packet.header.seq_number;
+        spdlog::info("[Node::process_tcu_negative_ack] received tcu negative acknowledgment for fragment {}", seq_number);
 
         auto it = _pcb.window.find(seq_number);
         if (it != _pcb.window.end())
@@ -688,8 +690,8 @@ void Node::process_tcu_positive_ack(tcu_packet packet)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
-        uint16_t seq_number = packet.header.seq_number;
-        spdlog::info("[Node::process_tcu_positive_ack] received tcu positive acknowledgment");
+        uint24_t seq_number = packet.header.seq_number;
+        spdlog::info("[Node::process_tcu_positive_ack] received tcu positive acknowledgment for fragment {}", seq_number);
 
         _pcb.window.clear();
     }
@@ -876,10 +878,10 @@ void Node::send_text(const std::string& message)
         else
         {
             /* Fragmented message */
-            size_t total_fragments = (message_length + max_payload_size - 1) / max_payload_size;
+            uint24_t total_fragments = (message_length + max_payload_size - 1) / max_payload_size;
             size_t offset = 0;
 
-            for (uint16_t seq_number = 1; seq_number <= total_fragments; seq_number++)
+            for (uint24_t seq_number = 1; seq_number <= total_fragments; seq_number++)
             {
                 size_t fragment_size = std::min(max_payload_size, message_length - offset);
 
@@ -979,7 +981,7 @@ void Node::send_file(const std::string& file_path)
         {
             // Fragmented
             size_t offset = 0;
-            uint16_t seq_number = 1;
+            uint24_t seq_number = 1;
             size_t remaining_size = total_size;
 
             while (remaining_size > 0)
@@ -1022,7 +1024,7 @@ void Node::send_file(const std::string& file_path)
     }
 }
 
-void Node::send_tcu_negative_ack(uint16_t seq_number)
+void Node::send_tcu_negative_ack(uint24_t seq_number)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
@@ -1043,7 +1045,7 @@ void Node::send_tcu_negative_ack(uint16_t seq_number)
     }
 }
 
-void Node::send_tcu_positive_ack(uint16_t seq_number)
+void Node::send_tcu_positive_ack(uint24_t seq_number)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
