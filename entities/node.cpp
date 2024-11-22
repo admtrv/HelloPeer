@@ -18,6 +18,16 @@ Node::Node() : _socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP), _receive_running(false
         exit(EXIT_FAILURE);
     }
 
+    int buff_size = 3000000;
+    if (setsockopt(_socket.get_socket(), SOL_SOCKET, SO_RCVBUF, &buff_size, sizeof(buff_size)) < 0)
+    {
+        perror("setsockopt SO_RCVBUF");
+    }
+    if (setsockopt(_socket.get_socket(), SOL_SOCKET, SO_SNDBUF, &buff_size, sizeof(buff_size)) < 0)
+    {
+        perror("setsockopt SO_SNDBUF");
+    }
+
     const char* home_dir = std::getenv("HOME");
     if (home_dir != nullptr)
     {
@@ -29,11 +39,11 @@ Node::Node() : _socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP), _receive_running(false
     }
 
     _max_frag_size = TCU_MAX_PAYLOAD_LEN;
+    _seq_num = 1;
+    _ack_received = false;
 
     _window_size = 0;
     _dynamic_window = true;
-
-    _seq_num = 1;
 }
 
 Node::~Node()
@@ -42,7 +52,6 @@ Node::~Node()
 
     stop_receiving();
     stop_keep_alive();
-    stop_sending();
 
     _socket.close_socket();
 }
@@ -83,7 +92,7 @@ void Node::set_dest(in_addr ip, uint16_t port)
 
 void Node::set_path(std::string& path)
 {
-    struct stat info;
+    struct stat info{};
 
     if (stat(_file_path.c_str(), &info) != 0)
     {
@@ -128,16 +137,24 @@ void Node::set_dynamic_window()
 
 void Node::dynamic_window_size()
 {
-    _window_size = std::max(uint24_t(1), _total_packets / uint24_t(5)); // 20 %
+    _window_size = std::max(uint24_t(1), _total_num / uint24_t(5)); // 20 %
     spdlog::info("[Node::set_window_size] set dynamic window size {}", _window_size);
 }
 
 void Node::start_receiving()
 {
-    if(!_receive_running)
+    if (!_receive_running)
     {
         _receive_running = true;
         _receive_thread = std::thread(&Node::receive_loop, this);
+
+        std::thread::native_handle_type handle = _receive_thread.native_handle();
+        sched_param sch_params{};
+        sch_params.sched_priority = 10;
+        if (pthread_setschedparam(handle, SCHED_FIFO, &sch_params) != 0)
+        {
+            spdlog::warn("[Node::start_receiving] error set thread priority", strerror(errno));
+        }
     }
 }
 
@@ -248,49 +265,6 @@ void Node::keep_alive_loop()
     }
 }
 
-void Node::start_sending()
-{
-    if (_send_thread.joinable())
-    {
-        _send_thread.join();
-    }
-
-    _send_running = true;
-    _send_thread = std::thread(&Node::send_loop, this);
-}
-
-void Node::stop_sending()
-{
-    _send_running = false;
-    if (_send_thread.joinable())
-    {
-        _send_thread.join();
-    }
-}
-void Node::send_loop()
-{
-    while (_send_running)
-    {
-        auto now = std::chrono::steady_clock::now();
-        if (now - _send_time > std::chrono::milliseconds(TCU_ACTIVITY_ATTEMPT_INTERVAL))
-        {
-            // Resend all fragments for the current window
-            for (uint24_t seq = _seq_num; seq < _seq_num + _window_size && seq <= _total_packets; seq++)
-            {
-                auto it = _send_packets.find(seq);
-                if (it != _send_packets.end())
-                {
-                    tcu_packet& packet = it->second;
-                    send_packet(packet.to_buff(), TCU_HDR_LEN + packet.header.length);
-                }
-            }
-            // Set timers for the current window
-            _send_time = std::chrono::steady_clock::now();
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(TCU_ACTIVITY_ATTEMPT_INTERVAL));
-    }
-}
-
 void Node::receive_packet()
 {
     char temp_buff[2048];
@@ -301,7 +275,7 @@ void Node::receive_packet()
 
     struct timeval timeout{};
     timeout.tv_sec = 0;
-    timeout.tv_usec = 100000;
+    timeout.tv_usec = 50000;
 
     int result = select(_socket.get_socket() + 1, &read_fds, nullptr, nullptr, &timeout);
 
@@ -344,28 +318,61 @@ void Node::send_packet(unsigned char* buff, size_t length)
     }
 }
 
-void Node::wait_for_ack()
+void Node::wait_for_conn_ack()
 {
-    spdlog::info("[Node::wait_for_ack] waiting for tcu acknowledgment");
+    spdlog::info("[Node::wait_for_conn_ack] waiting for tcu connection acknowledgment");
+
+    _ack_received = false;
 
     auto start_time = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_ACTIVITY_ATTEMPT_INTERVAL))
+    while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_CONNECTION_TIMEOUT_INTERVAL))
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        if (_pcb.is_activity_recent())
+        if (_ack_received)
         {
-            break;
+            _ack_received = false;
+            return;
         }
     }
 
-    if (!_pcb.is_activity_recent())
-    {
-        spdlog::info("[Node::wait_for_ack] no tcu acknowledgment, closing connection");
-        _pcb.new_phase(TCU_PHASE_HOLDOFF);
-        std::cout << "destination node down, connection closed" << std::endl;
-    }
+    spdlog::info("[Node::wait_for_conn_ack] no tcu acknowledgment, closing connection");
+    _pcb.new_phase(TCU_PHASE_HOLDOFF);
+    std::cout << "destination node down, connection closed" << std::endl;
 }
+
+void Node::wait_for_recv_ack()
+{
+    spdlog::info("[Node::wait_for_recv_ack] waiting for tcu receive acknowledgment");
+
+    int retry_count = 1;
+    int max_retries = TCU_ACTIVITY_ATTEMPT_COUNT;
+
+    while (retry_count <= max_retries)
+    {
+        auto start_time = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_RECEIVE_TIMEOUT_INTERVAL))
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            if (_ack_received)
+            {
+                _ack_received = false;
+                return;
+            }
+        }
+        retry_count++;
+
+        spdlog::info("[Node::wait_for_recv_ack] no tcu receive acknowledgment, resending window {}/{}", retry_count, max_retries);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        send_window();
+    }
+
+    spdlog::error("[Node::wait_for_recv_ack] no tcu receive acknowledgment, closing connection");
+    _pcb.new_phase(TCU_PHASE_HOLDOFF);
+    std::cout << "destination node down, connection closed" << std::endl;
+}
+
 
 void Node::assemble_text()
 {
@@ -426,7 +433,6 @@ void Node::assemble_file()
 
     save_file(file);
 }
-
 
 void Node::save_file(const File& file)
 {
@@ -554,6 +560,8 @@ void Node::process_tcu_conn_ack(tcu_packet packet)
     if (_pcb.phase == TCU_PHASE_CONNECT)
     {
         spdlog::info("[Node::process_tcu_conn_ack] received tcu connection acknowledgment");
+        _ack_received = true;
+
         _pcb.new_phase(TCU_PHASE_NETWORK);
         start_keep_alive();
         std::cout << "connected" << std::endl;
@@ -587,6 +595,8 @@ void Node::process_tcu_disconn_ack(tcu_packet packet)
     if (_pcb.phase == TCU_PHASE_DISCONNECT)
     {
         spdlog::info("[Node::process_tcu_disconn_ack] received tcu disconnection acknowledgment");
+        _ack_received = true;
+
         _pcb.new_phase(TCU_PHASE_HOLDOFF);
         stop_keep_alive();
         std::cout << "disconnected" << std::endl;
@@ -671,6 +681,7 @@ void Node::process_tcu_more_frag_text(tcu_packet packet)
         {
             // Start timer when first fragment received
             _receive_start_time_text = std::chrono::steady_clock::now();
+            std::cout << "receiving text..." << std::endl;
         }
 
         if (!packet.validate_crc())
@@ -744,8 +755,13 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
 
         if (_error_packets.empty())
         {
-            assemble_text();
             send_tcu_positive_ack(packet.header.seq_number);
+
+            assemble_text();
+
+            _received_packets.clear();
+            _error_packets.clear();
+
         }
         else
         {
@@ -770,6 +786,7 @@ void Node::process_tcu_more_frag_file(tcu_packet packet)
         {
             // Start timer when first fragment received
             _receive_start_time_file = std::chrono::steady_clock::now();
+            std::cout << "receiving file..." << std::endl;
         }
 
         if (!packet.validate_crc())
@@ -842,8 +859,12 @@ void Node::process_tcu_last_frag_file(tcu_packet packet)
 
         if (_error_packets.empty())
         {
-            assemble_file();
             send_tcu_positive_ack(packet.header.seq_number);
+
+            assemble_file();
+
+            _received_packets.clear();
+            _error_packets.clear();
         }
         else
         {
@@ -898,16 +919,17 @@ void Node::process_tcu_positive_ack(tcu_packet packet)
 
         uint24_t ack_seq = packet.header.seq_number;
 
-        if (ack_seq >= _total_packets)
+        if (ack_seq == _total_num)
         {
+            _seq_num = ack_seq + uint24_t(1);
             spdlog::info("[Node::process_tcu_positive_ack] all packets successfully sent");
-            stop_sending();
+            _ack_received = true;
         }
         else
         {
             _seq_num = ack_seq + uint24_t(1);
             spdlog::info("[Node::process_tcu_positive_ack] move to next window starting {}", _seq_num);
-            send_window();
+            _ack_received = true;
         }
     }
     else
@@ -936,11 +958,11 @@ void Node::send_tcu_conn_req()
         packet.header.seq_number = 0;
         packet.calculate_crc();
 
+        _ack_received = false;
         send_packet(packet.to_buff(), TCU_HDR_LEN);
+        wait_for_conn_ack();
 
         _pcb.new_phase(TCU_PHASE_CONNECT);
-
-        wait_for_ack();
     }
     else if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
@@ -989,11 +1011,11 @@ void Node::send_tcu_disconn_req()
         packet.header.seq_number = 0;
         packet.calculate_crc();
 
+        _ack_received = false;
         send_packet(packet.to_buff(), TCU_HDR_LEN);
+        wait_for_conn_ack();
 
         _pcb.new_phase(TCU_PHASE_DISCONNECT);
-
-        wait_for_ack();
     }
     else if (_pcb.phase <= TCU_PHASE_INITIALIZE)
     {
@@ -1066,12 +1088,10 @@ void Node::send_keep_alive_ack()
 
 void Node::send_window()
 {
-    stop_sending();
-
-    spdlog::info("[Node::send_window] sending window range [{},{}]", _seq_num, std::min(_seq_num + _window_size - uint24_t(1), _total_packets));
+    spdlog::info("[Node::send_window] sending window range [{},{}]", _seq_num, std::min(_seq_num + _window_size - uint24_t(1), _total_num));
 
     // Send all fragments for the current window
-    for (uint24_t seq = _seq_num; seq < _seq_num + _window_size && seq <= _total_packets; seq++)
+    for (uint24_t seq = _seq_num; seq < _seq_num + _window_size && seq <= _total_num; seq++)
     {
         auto it = _send_packets.find(seq);
         if (it != _send_packets.end())
@@ -1080,12 +1100,9 @@ void Node::send_window()
 
             tcu_packet& packet = it->second;
             send_packet(packet.to_buff(), TCU_HDR_LEN + packet.header.length);
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
     }
-
-    // Set timers for the current window
-    _send_time = std::chrono::steady_clock::now();
-    start_sending();
 }
 
 void Node::send_text(const std::string& message)
@@ -1120,14 +1137,14 @@ void Node::send_text(const std::string& message)
         else
         {
             // Fragmented
-            _total_packets = (message_length + max_payload_size - 1) / max_payload_size;
+            _total_num = (message_length + max_payload_size - 1) / max_payload_size;
             if (_dynamic_window)
             {
                 dynamic_window_size();
             }
 
             size_t offset = 0;
-            for (uint24_t seq = 1; seq <= _total_packets; seq++)
+            for (uint24_t seq = 1; seq <= _total_num; seq++)
             {
                 size_t fragment_size = std::min(max_payload_size, message_length - offset);
 
@@ -1137,7 +1154,7 @@ void Node::send_text(const std::string& message)
                 packet.payload = new unsigned char[fragment_size];
                 std::memcpy(packet.payload, message.data() + offset, fragment_size);
 
-                if (seq == _total_packets)
+                if (seq == _total_num)
                 {
                     packet.header.flags = TCU_HDR_NO_FLAG;
                 }
@@ -1157,9 +1174,18 @@ void Node::send_text(const std::string& message)
                 offset += fragment_size;
             }
 
-            spdlog::info("[Node::send_text] sent tcu fragmented text size {} fragments {} fragment size {}", message_length, _total_packets, max_payload_size);
+            spdlog::info("[Node::send_text] sent tcu fragmented text size {} fragments {} fragment size {}", message_length, _total_num, max_payload_size);
+            std::cout << "sending text..." << std::endl;
 
-            send_window();
+            while (_seq_num <= _total_num)
+            {
+                _ack_received = false;
+                send_window();
+                wait_for_recv_ack();
+            }
+
+            spdlog::info("[Node::send_file] file transmission completed");
+            std::cout << "complete" << std::endl;
         }
     }
     else
@@ -1202,7 +1228,7 @@ void Node::send_file(const std::string& file_path)
 
         // File to buff
         unsigned char* file_buffer = file.to_buff();
-        size_t total_size = sizeof(FileHeader) + file.get_size();
+        size_t total_size = sizeof(file.get_header().name_length) + file.get_header().name_length + sizeof(file.get_header().file_size) + file.get_size();
 
         size_t max_payload_size = _max_frag_size;
 
@@ -1227,14 +1253,14 @@ void Node::send_file(const std::string& file_path)
         else
         {
             // Fragmented
-            _total_packets = (total_size + max_payload_size - 1) / max_payload_size;
+            _total_num = (total_size + max_payload_size - 1) / max_payload_size;
             if (_dynamic_window)
             {
                 dynamic_window_size();
             }
 
             size_t offset = 0;
-            for (uint24_t seq = 1; seq <= _total_packets; seq++) {
+            for (uint24_t seq = 1; seq <= _total_num; seq++) {
                 size_t fragment_size = std::min(max_payload_size, total_size - offset);
 
                 tcu_packet packet{};
@@ -1243,7 +1269,7 @@ void Node::send_file(const std::string& file_path)
                 packet.payload = new unsigned char[fragment_size];
                 std::memcpy(packet.payload, file_buffer + offset, fragment_size);
 
-                if (seq == _total_packets)
+                if (seq == _total_num)
                 {
                     packet.header.flags = TCU_HDR_FLAG_FL;
                 }
@@ -1263,9 +1289,18 @@ void Node::send_file(const std::string& file_path)
                 offset += fragment_size;
             }
 
-            spdlog::info("[Node::send_file] sent tcu fragmented file name {} size {} fragments {} fragment size {}", file_name, total_size, _total_packets, max_payload_size);
+            spdlog::info("[Node::send_file] sent tcu fragmented file name {} size {} fragments {} fragment size {}", file_name, total_size, _total_num, max_payload_size);
+            std::cout << "sending file..." << std::endl;
 
-            send_window();
+            while (_seq_num < _total_num)
+            {
+                _ack_received = false;
+                send_window();
+                wait_for_recv_ack();
+            }
+
+            spdlog::info("[Node::send_file] file transmission completed");
+            std::cout << "complete" << std::endl;
         }
 
         delete[] file_buffer;

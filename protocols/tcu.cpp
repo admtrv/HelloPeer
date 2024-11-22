@@ -45,6 +45,30 @@ tcu_packet& tcu_packet::operator=(const tcu_packet& other)
     return *this;
 }
 
+tcu_packet::tcu_packet(tcu_packet&& other) noexcept {
+    header = other.header;
+    payload = other.payload;
+    other.payload = nullptr;
+}
+
+tcu_packet& tcu_packet::operator=(tcu_packet&& other) noexcept {
+    if (this == &other)
+    {
+        return *this;
+    }
+
+    if (payload != nullptr)
+    {
+        delete[] payload;
+    }
+
+    header = other.header;
+    payload = other.payload;
+    other.payload = nullptr;
+
+    return *this;
+}
+
 tcu_packet::~tcu_packet()
 {
     if (payload != nullptr)
@@ -58,7 +82,7 @@ unsigned char* tcu_packet::to_buff()
 {
     size_t total_size = sizeof(tcu_header) + header.length;
 
-    unsigned char* buffer = new unsigned char[total_size];
+    auto* buffer = new unsigned char[total_size];
     size_t offset = 0;
 
     // Sequence Number (3 bytes)
@@ -153,7 +177,7 @@ uint16_t calculate_crc16(const unsigned char* data, size_t length)
 void tcu_packet::calculate_crc()
 {
     size_t total_size = sizeof(tcu_header) - sizeof(header.checksum) + header.length;
-    unsigned char* buffer = new unsigned char[total_size];
+    auto* buffer = new unsigned char[total_size];
 
     // Copy header without CRC
     std::memcpy(buffer, &header, sizeof(tcu_header) - sizeof(header.checksum));
@@ -170,7 +194,7 @@ void tcu_packet::calculate_crc()
 bool tcu_packet::validate_crc()
 {
     size_t total_size = sizeof(tcu_header) - sizeof(header.checksum) + header.length;
-    unsigned char* buffer = new unsigned char[total_size];
+    auto* buffer = new unsigned char[total_size];
 
     // Copy header without CRC
     std::memcpy(buffer, &header, sizeof(tcu_header) - sizeof(header.checksum));

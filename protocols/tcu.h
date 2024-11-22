@@ -114,6 +114,9 @@
 #define TCU_ACTIVITY_ATTEMPT_COUNT      3       // Number of attempts
 #define TCU_ACTIVITY_ATTEMPT_INTERVAL   5       // 5 second interval between attempts
 
+#define TCU_CONNECTION_TIMEOUT_INTERVAL 5       // 5 seconds to get conn ack back
+#define TCU_RECEIVE_TIMEOUT_INTERVAL    60      // 1 minute (60 seconds) to get window ack
+
 struct tcu_header {
     uint24_t seq_number;        // Sequence packet number
     uint8_t flags;              // Flags
@@ -128,8 +131,11 @@ struct tcu_packet {
     tcu_packet();
     ~tcu_packet();
 
-    tcu_packet(const tcu_packet& other);                // Deep-copy constructor
-    tcu_packet& operator=(const tcu_packet& other);     // Deep-copy operator =
+    tcu_packet(const tcu_packet& other);
+    tcu_packet& operator=(const tcu_packet& other);
+
+    tcu_packet(tcu_packet&& other) noexcept;
+    tcu_packet& operator=(tcu_packet&& other) noexcept;
 
     unsigned char* to_buff();
     static tcu_packet from_buff(unsigned char* buff);

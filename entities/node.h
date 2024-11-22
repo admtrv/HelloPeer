@@ -22,7 +22,6 @@
 #include <cerrno>
 #include <cstring>
 
-
 #include "../protocols/tcu.h"
 #include "../types/uint24_t.h"
 #include "file.h"
@@ -66,10 +65,9 @@ public:
     void start_keep_alive();
     void stop_keep_alive();
 
-    void start_sending();
-    void stop_sending();
-
-    void wait_for_ack();
+    /* Waiting methods */
+    void wait_for_conn_ack();
+    void wait_for_recv_ack();
 
     /* FSM methods */
     void fsm_process(unsigned char* buff, size_t length);
@@ -120,30 +118,24 @@ private:
 
     /* Receiving thread params */
     void receive_loop();
-    std::atomic<bool> _receive_running;
+    std::atomic<bool> _receive_running{false};
     std::thread _receive_thread;
 
     /* Keep-Alive thread params */
     void keep_alive_loop();
-    std::atomic<bool> _keep_alive_running;
+    std::atomic<bool> _keep_alive_running{false};
     std::thread _keep_alive_thread;
 
-    /* Sending thread params */
-    void send_loop();
-    std::atomic<bool> _send_running;
-    std::thread _send_thread;
-
     /* Sending params */
-    std::map<uint24_t, tcu_packet> _send_packets;
-    std::chrono::steady_clock::time_point _send_time;
-
-    void dynamic_window_size();
-    bool _dynamic_window;
-    uint24_t _window_size;
-
     size_t _max_frag_size;
     uint24_t _seq_num;
-    uint24_t _total_packets;
+    uint24_t _total_num;
+    std::atomic<bool> _ack_received;
+
+    std::map<uint24_t, tcu_packet> _send_packets;
+    bool _dynamic_window;
+    uint24_t _window_size;
+    void dynamic_window_size();
 
     /* Receiving params */
     std::map<uint24_t, tcu_packet> _received_packets;

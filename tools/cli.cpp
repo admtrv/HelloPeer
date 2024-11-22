@@ -72,7 +72,7 @@ void CLI::run()
             try {
                 size_t size = std::stoul(command.substr(20));
 
-                if (size > 0 && size < TCU_MAX_PAYLOAD_LEN)
+                if (size > 0 && size <= TCU_MAX_PAYLOAD_LEN)
                 {
                     _node->set_max_frag_size(size);
                 }
@@ -132,7 +132,6 @@ void CLI::run()
         {
             _node->stop_receiving();
             _node->stop_keep_alive();
-            _node->stop_sending();
 
             break;
         }
