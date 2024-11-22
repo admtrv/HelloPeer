@@ -33,7 +33,7 @@ void Logger::init_logger()
         _logger = std::make_shared<spdlog::logger>("main_logger", sinks.begin(), sinks.end());
 
         spdlog::set_default_logger(_logger);
-        spdlog::set_pattern("%Y-%m-%d %H:%M:%S [%l] %v");
+        spdlog::set_pattern("%Y-%m-%d %H:%M:%S [%t] [%l] %v");
         spdlog::set_level(spdlog::level::info);
 
     }

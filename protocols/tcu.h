@@ -45,21 +45,8 @@
  *    - Checksum used to verify the integrity of the packet, including the header and payload
  *    - This is calculated using the CRC16-CCITT algorithm over both the header and the payload
  *
- * Data Flow:
- *    - Connection is initiated with a SYN packet from the sender
- *    - Receiver responds with SYN + ACK to confirm the connection establishment
- *    - Once the connection is established, data transmission begins
- *    - For large messages, the sender splits data into fragments.
- *      Packets are marked with DF or MF flags depending on whether fragmentation is used
- *    - Receiver verifies each packet using CRC.
- *      If a packet is corrupted or missing, a NACK is sent with the SEQ NUM of the problematic fragment
- *    - The sender retransmits only the fragments requested in the NACK
- *    - When packets are not transmitted, KA packet is sent to keep connection alive
- *    - If a particular node is desired, the connection is terminated with a FIN packet
- *    - The receiver responds with a FIN + ACK, confirming the termination
- *
  * Selective Repeat (SR) Support:
- *    - The TCU protocol employs Selective Repeat (SR) ARQ to ensure reliable data transmission
+ *    - The TCU protocol employs Selective Repeat (SR) with Dynamic Window ARQ to ensure reliable data transmission
  *    - SR allows retransmission of only corrupted or lost fragments based on the NACK packets
  *
  * Flags Combinations :
@@ -74,14 +61,16 @@
  *
  * 7. Single Message — DF, LEN
  * 8. Fragment of Message — MF, LEN
- * 9. Last Fragment of Message — NONE, LEN
+ * 9. Last Window Fragment of Message — MF + FIN, LEN
+ * 10. Last Fragment of Message — NONE, LEN
  *
- * 10. Single File - DF + FL, LEN
- * 11. Fragment of File — MF + FL, LEN
- * 12. Last Fragment of File — FL, LEN
+ * 11. Single File - DF + FL, LEN
+ * 12. Fragment of File — MF + FL, LEN
+ * 13. Last Window Fragment of File — MF + FIN + FL, LEN
+ * 14. Last Fragment of File — FL, LEN
  *
- * 13. Acknowledgment - ACK, LEN 0, SEQ NUM
- * 14. Negative Acknowledgment — NACK, LEN 0, SEQ NUM [ERR FRG]
+ * 15. Acknowledgment - ACK, LEN 0, SEQ NUM
+ * 16. Negative Acknowledgment — NACK, LEN 0, SEQ NUM [ERR FRG]
  */
 
 #pragma once
@@ -154,11 +143,8 @@ uint16_t calculate_crc16(const unsigned char* data, size_t length);   // CRC16-C
 /* TCU PCB (Protocol Control Block) */
 struct tcu_pcb {
     /* Connection params */
+    void new_phase(int phase);
     uint8_t phase = TCU_PHASE_DEAD;     // Phase, where link at
-
-    /* Message params*/
-    size_t max_frag_size = TCU_MAX_PAYLOAD_LEN;     // Maximum size of fragmented message
-    std::map<uint24_t, tcu_packet> window;          // Window for fragments and Selective Repeat (SR)
 
     /* Source node params */
     uint16_t src_port;
@@ -172,10 +158,6 @@ struct tcu_pcb {
     std::atomic<std::chrono::steady_clock::time_point> last_activity;
     std::atomic<bool> is_active{false};
     mutable std::mutex activity_mutex;
-
-    void new_phase(int phase);
-    void set_max_frag_size(size_t size);
-
     void update_last_activity();
     bool is_activity_recent() const;
 

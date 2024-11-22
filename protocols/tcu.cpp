@@ -212,9 +212,3 @@ bool tcu_pcb::is_activity_recent() const
     auto now = std::chrono::steady_clock::now();
     return (now - last) < std::chrono::seconds(TCU_ACTIVITY_ATTEMPT_COUNT * TCU_ACTIVITY_ATTEMPT_INTERVAL);
 }
-
-void tcu_pcb::set_max_frag_size(size_t size)
-{
-    max_frag_size = size;
-    spdlog::info("[tcu_pcb::set_max_frag_size] set max fragment size {}", size);
-}

@@ -1,5 +1,7 @@
 /*
- * uint24_t.h
+ * uint24_t — Unsigned Integer Type of 24 Bits (3 Bytes) Width Realization
+ *
+ * Author: Anton Dmitriev
  */
 
 #pragma once

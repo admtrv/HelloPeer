@@ -74,17 +74,42 @@ void CLI::run()
 
                 if (size > 0 && size < TCU_MAX_PAYLOAD_LEN)
                 {
-                    _node->get_pcb().set_max_frag_size(size);
+                    _node->set_max_frag_size(size);
                 }
                 else
                 {
                     std::cout << "invalid fragment size" << std::endl;
                 }
             }
-            catch(std::out_of_range&)
+            catch(std::exception&)
             {
                 std::cout << "invalid fragment size" << std::endl;
             }
+        }
+
+        else if (command.substr(0, 22) == "proc node window size ")
+        {
+            try {
+                uint24_t size = std::stoul(command.substr(22));
+
+                if (size > uint24_t(0))
+                {
+                    _node->set_window_size(size);
+                }
+                else
+                {
+                    std::cout << "invalid window size" << std::endl;
+                }
+            }
+            catch(std::exception&)
+            {
+                std::cout << "invalid window size" << std::endl;
+            }
+        }
+
+        else if (command == "proc node window dynamic")
+        {
+            _node->set_dynamic_window();
         }
 
         else if (command.substr(0, 20) == "proc node file path ")
@@ -107,6 +132,8 @@ void CLI::run()
         {
             _node->stop_receiving();
             _node->stop_keep_alive();
+            _node->stop_sending();
+
             break;
         }
 
@@ -174,17 +201,23 @@ void CLI::run()
 
 void CLI::display_help() {
     std::cout << "commands:\n"
-              << "  proc node port <port>       - set source node port will listen\n"
-              << "  proc node dest <ip>:<port>  - set destination node ip and port\n"
-              << "  proc node frag size <size>  - set maximum fragment size in bytes (0," << TCU_MAX_PAYLOAD_LEN << ")\n"
-              << "  proc node file path <path>  - set file save path for received files (default " << _node->get_path() << ")\n"
-              << "  proc node connect           - connect to destination node\n"
-              << "  proc node disconnect        - disconnect with destination node\n"
-              << "  send text <text>            - send text message to destination node\n"
-              << "  send file <path>            - send file message to destination node\n"
-              << "  set log level <level>       - set log level (trace, debug, info, warn, error, critical)\n"
-              << "  show log                    - display current logs\n"
-              << "  exit                        - exit application\n"
+              << "  proc node port <port>           - set source node port will listen\n"
+              << "  proc node dest <ip>:<port>      - set destination node ip and port\n"
+              << "  proc node frag size <size>      - set maximum fragment size in bytes (0," << TCU_MAX_PAYLOAD_LEN << ")\n"
+              << "  proc node window size <size>    - set manual window size (disable dynamic window sizing)\n"
+              << "  proc node window dynamic        - enable dynamic window sizing\n"
+              << "  proc node file path <path>      - set file save path for received files (default " << _node->get_path() << ")\n"
+              << "\n"
+              << "  proc node connect               - connect to destination node\n"
+              << "  proc node disconnect            - disconnect with destination node\n"
+              << "\n"
+              << "  send text <text>                - send text message to destination node\n"
+              << "  send file <path>                - send file message to destination node\n"
+              << "\n"
+              << "  set log level <level>           - set log level (trace, debug, info, warn, error, critical)\n"
+              << "  show log                        - display current logs\n"
+              << "\n"
+              << "  exit                            - exit application\n"
               << "\n";
 }
 
