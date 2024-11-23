@@ -40,6 +40,7 @@ Node::Node() : _socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP), _receive_running(false
 
     _max_frag_size = TCU_MAX_PAYLOAD_LEN;
     _seq_num = 1;
+    _last_num = 0;
     _ack_received = false;
 
     _window_size = 0;
@@ -135,6 +136,45 @@ void Node::set_dynamic_window()
     spdlog::info("[Node::set_dynamic_window] set dynamic window sizing");
 }
 
+void Node::set_error_rate(double rate)
+{
+    if (rate >= 0.0 && rate <= 100.0)
+    {
+        _error_rate = rate / 100.0;
+        spdlog::info("[Node::set_error_rate] set error rate {}", rate);
+    }
+    else
+    {
+        std::cout << "invalid error rate" << std::endl;
+    }
+}
+
+void Node::set_packet_loss_rate(double rate)
+{
+    if (rate >= 0.0 && rate <= 100.0)
+    {
+        _packet_loss_rate = rate / 100.0;
+        spdlog::info("[Node::set_packet_loss_rate] set packet loss rate {}", rate);
+    }
+    else
+    {
+        std::cout << "invalid packet loss rate" << std::endl;
+    }
+}
+
+void Node::set_window_loss_rate(double rate)
+{
+    if (rate >= 0.0 && rate <= 100.0)
+    {
+        _window_loss_rate = rate / 100.0;
+        spdlog::info("[Node::set_window_loss_rate] set window rate {}", rate);
+    }
+    else
+    {
+        std::cout << "invalid window loss rate" << std::endl;
+    }
+}
+
 void Node::dynamic_window_size()
 {
     _window_size = std::max(uint24_t(1), _total_num / uint24_t(5)); // 20 %
@@ -147,14 +187,6 @@ void Node::start_receiving()
     {
         _receive_running = true;
         _receive_thread = std::thread(&Node::receive_loop, this);
-
-        std::thread::native_handle_type handle = _receive_thread.native_handle();
-        sched_param sch_params{};
-        sch_params.sched_priority = 10;
-        if (pthread_setschedparam(handle, SCHED_FIFO, &sch_params) != 0)
-        {
-            spdlog::warn("[Node::start_receiving] error set thread priority", strerror(errno));
-        }
     }
 }
 
@@ -304,9 +336,45 @@ void Node::receive_packet()
     }
 }
 
-void Node::send_packet(unsigned char* buff, size_t length)
+void Node::send_packet(unsigned char* buff, size_t length, bool control)
 {
-    ssize_t num_bytes = sendto(_socket.get_socket(), buff, length, 0, reinterpret_cast<struct sockaddr*>(&_pcb.dest_addr), sizeof(_pcb.dest_addr));
+    // Control (system) packet
+    if (control)
+    {
+        ssize_t num_bytes = sendto(_socket.get_socket(), buff, length, 0, reinterpret_cast<struct sockaddr*>(&_pcb.dest_addr), sizeof(_pcb.dest_addr));
+
+        if (num_bytes < 0)
+        {
+            perror("sendto");
+        }
+        else
+        {
+            spdlog::info("[Node::send_packet] sent {} bytes to {}:{}", num_bytes, inet_ntoa(_pcb.dest_addr.sin_addr), ntohs(_pcb.dest_addr.sin_port));
+        }
+
+        return;
+    }
+
+    // Data packet
+
+    // Packet loss simulation
+    if (_dist(_gen) < _packet_loss_rate)
+    {
+        spdlog::info("[Node::send_packet] simulated packet loss");
+        return;
+    }
+
+    // Packet corruption simulation
+    auto* temp_buff = new unsigned char[length];
+    std::memcpy(temp_buff, buff, length);
+
+    if (_dist(_gen) < _error_rate)
+    {
+        temp_buff[length - 1] ^= 0xFF;
+        spdlog::info("[Node::send_packet] simulated packet corruption");
+    }
+
+    ssize_t num_bytes = sendto(_socket.get_socket(), temp_buff, length, 0,reinterpret_cast<struct sockaddr*>(&_pcb.dest_addr), sizeof(_pcb.dest_addr));
 
     if (num_bytes < 0)
     {
@@ -316,13 +384,13 @@ void Node::send_packet(unsigned char* buff, size_t length)
     {
         spdlog::info("[Node::send_packet] sent {} bytes to {}:{}", num_bytes, inet_ntoa(_pcb.dest_addr.sin_addr), ntohs(_pcb.dest_addr.sin_port));
     }
+
+    delete[] temp_buff;
 }
 
 void Node::wait_for_conn_ack()
 {
     spdlog::info("[Node::wait_for_conn_ack] waiting for tcu connection acknowledgment");
-
-    _ack_received = false;
 
     auto start_time = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_CONNECTION_TIMEOUT_INTERVAL))
@@ -345,10 +413,10 @@ void Node::wait_for_recv_ack()
 {
     spdlog::info("[Node::wait_for_recv_ack] waiting for tcu receive acknowledgment");
 
-    int retry_count = 1;
+    int retry_count = 0;
     int max_retries = TCU_ACTIVITY_ATTEMPT_COUNT;
 
-    while (retry_count <= max_retries)
+    while (retry_count < max_retries)
     {
         auto start_time = std::chrono::steady_clock::now();
         while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_RECEIVE_TIMEOUT_INTERVAL))
@@ -391,7 +459,6 @@ void Node::assemble_text()
     }
 
     _received_packets.clear();
-    _error_packets.clear();
 
     // Compute duration
     auto receive_end_time = std::chrono::steady_clock::now();
@@ -420,7 +487,6 @@ void Node::assemble_file()
     }
 
     _received_packets.clear();
-    _error_packets.clear();
 
     // Compute duration
     auto receive_end_time = std::chrono::steady_clock::now();
@@ -551,7 +617,7 @@ void Node::process_tcu_conn_req(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_conn_req] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -569,7 +635,7 @@ void Node::process_tcu_conn_ack(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_conn_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -586,7 +652,7 @@ void Node::process_tcu_disconn_req(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_disconn_req] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -604,7 +670,7 @@ void Node::process_tcu_disconn_ack(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_disconn_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -641,7 +707,7 @@ void Node::process_tcu_single_text(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_single_text] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -667,7 +733,7 @@ void Node::process_tcu_single_file(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_single_file] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -677,17 +743,18 @@ void Node::process_tcu_more_frag_text(tcu_packet packet)
     {
         spdlog::info("[Node::process_tcu_more_frag_text] received tcu text packet {}", packet.header.seq_number);
 
-        if (_received_packets.empty() && _error_packets.empty())
+        if (_received_packets.empty())
         {
             // Start timer when first fragment received
             _receive_start_time_text = std::chrono::steady_clock::now();
+            _seq_num = 1;
+            _last_num = 1;
             std::cout << "receiving text..." << std::endl;
         }
 
         if (!packet.validate_crc())
         {
             spdlog::warn("[Node::process_tcu_more_frag_text] invalid checksum for packet {}", packet.header.seq_number);
-            _error_packets[packet.header.seq_number] = packet;
         }
         else
         {
@@ -697,7 +764,7 @@ void Node::process_tcu_more_frag_text(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_more_frag_text] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -710,28 +777,36 @@ void Node::process_tcu_last_wind_frag_text(tcu_packet packet)
         if (!packet.validate_crc())
         {
             spdlog::warn("[Node::process_tcu_last_wind_frag_text] invalid checksum for packet {}", packet.header.seq_number);
-            _error_packets[packet.header.seq_number] = packet;
-            send_tcu_negative_ack(packet.header.seq_number);
         }
         else
         {
             _received_packets[packet.header.seq_number] = packet;
         }
 
-        if (_error_packets.empty())
+        // Determine window last packet
+        if (packet.header.seq_number > _last_num)
         {
-            send_tcu_positive_ack(packet.header.seq_number);
+            _last_num = packet.header.seq_number;
         }
-        else
+
+        // Problem packets
+        for (uint24_t i = _seq_num; i <= _last_num; i++)
         {
-            auto it = _error_packets.begin();
-            send_tcu_negative_ack(it->first);
+            if (_received_packets.find(i) == _received_packets.end())
+            {
+                spdlog::warn("[Node::process_tcu_last_wind_frag_text] missing packet {}", i);
+                send_tcu_negative_ack(i);
+                return;
+            }
         }
+
+        _seq_num = _last_num;
+        send_tcu_positive_ack(_last_num);
     }
     else
     {
         spdlog::error("[Node::process_tcu_last_wind_frag_text] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 
 }
@@ -740,39 +815,42 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
-        spdlog::info("[Node::process_tcu_more_frag_text] received tcu last text packet {}", packet.header.seq_number);
+        spdlog::info("[Node::process_tcu_last_frag_text] received tcu last text packet {}", packet.header.seq_number);
 
         if (!packet.validate_crc())
         {
             spdlog::warn("[Node::process_tcu_last_frag_text] invalid checksum for packet {}", packet.header.seq_number);
-            _error_packets[packet.header.seq_number] = packet;
-            send_tcu_negative_ack(packet.header.seq_number);
         }
         else
         {
             _received_packets[packet.header.seq_number] = packet;
         }
 
-        if (_error_packets.empty())
+        // Determine window last packet
+        if (packet.header.seq_number > _last_num)
         {
-            send_tcu_positive_ack(packet.header.seq_number);
-
-            assemble_text();
-
-            _received_packets.clear();
-            _error_packets.clear();
-
+            _last_num = packet.header.seq_number;
         }
-        else
+
+        // Problem packets
+        for (uint24_t i = _seq_num; i <= _last_num; i++)
         {
-            auto it = _error_packets.begin();
-            send_tcu_negative_ack(it->first);
+            if (_received_packets.find(i) == _received_packets.end())
+            {
+                spdlog::warn("[Node::process_tcu_last_frag_text] missing packet {}", i);
+                send_tcu_negative_ack(i);
+                return;
+            }
         }
+
+        _seq_num = _last_num;
+        send_tcu_positive_ack(_last_num);
+        assemble_text();
     }
     else
     {
         spdlog::error("[Node::process_tcu_last_frag_text] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -780,19 +858,20 @@ void Node::process_tcu_more_frag_file(tcu_packet packet)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
-        spdlog::info("[Node::process_tcu_more_frag_text] received tcu file packet {}", packet.header.seq_number);
+        spdlog::info("[Node::process_tcu_more_frag_file] received tcu file packet {}", packet.header.seq_number);
 
-        if (_received_packets.empty() && _error_packets.empty())
+        if (_received_packets.empty())
         {
             // Start timer when first fragment received
             _receive_start_time_file = std::chrono::steady_clock::now();
+            _seq_num = 1;
+            _last_num = 1;
             std::cout << "receiving file..." << std::endl;
         }
 
         if (!packet.validate_crc())
         {
             spdlog::warn("[Node::process_tcu_more_frag_file] invalid checksum for packet {}", packet.header.seq_number);
-            _error_packets[packet.header.seq_number] = packet;
         }
         else
         {
@@ -802,7 +881,7 @@ void Node::process_tcu_more_frag_file(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_more_frag_file] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -810,33 +889,41 @@ void Node::process_tcu_last_wind_frag_file(tcu_packet packet)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
-        spdlog::info("[Node::process_tcu_more_frag_text] received tcu last window file packet {}", packet.header.seq_number);
+        spdlog::info("[Node::process_tcu_last_wind_frag_file] received tcu last window file packet {}", packet.header.seq_number);
 
         if (!packet.validate_crc())
         {
             spdlog::warn("[Node::process_tcu_last_wind_frag_file] invalid checksum for packet {}", packet.header.seq_number);
-            _error_packets[packet.header.seq_number] = packet;
-            send_tcu_negative_ack(packet.header.seq_number);
         }
         else
         {
             _received_packets[packet.header.seq_number] = packet;
         }
 
-        if (_error_packets.empty())
+        // Determine window last packet
+        if (packet.header.seq_number > _last_num)
         {
-            send_tcu_positive_ack(packet.header.seq_number);
+            _last_num = packet.header.seq_number;
         }
-        else
+
+        // Problem packets
+        for (uint24_t i = _seq_num; i <= _last_num; i++)
         {
-            auto it = _error_packets.begin();
-            send_tcu_negative_ack(it->first);
+            if (_received_packets.find(i) == _received_packets.end())
+            {
+                spdlog::warn("[Node::process_tcu_last_wind_frag_file] missing packet {}", i);
+                send_tcu_negative_ack(i);
+                return;
+            }
         }
+
+        _seq_num = _last_num;
+        send_tcu_positive_ack(_last_num);
     }
     else
     {
         spdlog::error("[Node::process_tcu_last_wind_frag_file] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -844,41 +931,44 @@ void Node::process_tcu_last_frag_file(tcu_packet packet)
 {
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
-        spdlog::info("[Node::process_tcu_more_frag_text] received tcu last file packet {}", packet.header.seq_number);
+        spdlog::info("[Node::process_tcu_last_frag_file] received tcu last file packet {}", packet.header.seq_number);
 
         if (!packet.validate_crc())
         {
             spdlog::warn("[Node::process_tcu_last_frag_file] invalid checksum for packet {}", packet.header.seq_number);
-            _error_packets[packet.header.seq_number] = packet;
-            send_tcu_negative_ack(packet.header.seq_number);
         }
         else
         {
             _received_packets[packet.header.seq_number] = packet;
         }
 
-        if (_error_packets.empty())
+        // Determine window last packet
+        if (packet.header.seq_number > _last_num)
         {
-            send_tcu_positive_ack(packet.header.seq_number);
-
-            assemble_file();
-
-            _received_packets.clear();
-            _error_packets.clear();
+            _last_num = packet.header.seq_number;
         }
-        else
+
+        // Problem packets
+        for (uint24_t i = _seq_num; i <= _last_num; i++)
         {
-            auto it = _error_packets.begin();
-            send_tcu_negative_ack(it->first);
+            if (_received_packets.find(i) == _received_packets.end())
+            {
+                spdlog::warn("[Node::process_tcu_last_frag_file] missing packet {}", i);
+                send_tcu_negative_ack(i);
+                return;
+            }
         }
+
+        _seq_num = _last_num;
+        send_tcu_positive_ack(_last_num);
+        assemble_file();
     }
     else
     {
         spdlog::error("[Node::process_tcu_last_frag_file] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
-
 
 void Node::process_tcu_negative_ack(tcu_packet packet)
 {
@@ -892,10 +982,23 @@ void Node::process_tcu_negative_ack(tcu_packet packet)
         if (it != _send_packets.end())
         {
             tcu_packet& error_packet = it->second;
-            error_packet.header.flags |= TCU_HDR_FLAG_FIN;
+
+            uint24_t last_window_start = (_total_num > _window_size) ? (_total_num - _window_size + uint24_t(1)) : uint24_t(1);
+            if (nack_seq < last_window_start)
+            {
+                // Not in last window
+                error_packet.header.flags |= TCU_HDR_FLAG_FIN;
+                spdlog::info("[Node::process_tcu_negative_ack] fragment from window");
+            }
+            else
+            {
+                // In the last window
+                error_packet.header.flags &= ~TCU_HDR_FLAG_MF;
+                spdlog::info("[Node::process_tcu_negative_ack] fragment from last window", nack_seq);
+            }
             error_packet.calculate_crc();
 
-            send_packet(error_packet.to_buff(), TCU_HDR_LEN + error_packet.header.length);
+            send_packet(error_packet.to_buff(), TCU_HDR_LEN + error_packet.header.length, true);
             spdlog::info("[Node::process_tcu_negative_ack] recent packet {}", nack_seq);
         }
         else
@@ -907,7 +1010,7 @@ void Node::process_tcu_negative_ack(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_negative_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -921,13 +1024,13 @@ void Node::process_tcu_positive_ack(tcu_packet packet)
 
         if (ack_seq == _total_num)
         {
-            _seq_num = ack_seq + uint24_t(1);
+            _seq_num += _window_size;
             spdlog::info("[Node::process_tcu_positive_ack] all packets successfully sent");
             _ack_received = true;
         }
         else
         {
-            _seq_num = ack_seq + uint24_t(1);
+            _seq_num += _window_size;
             spdlog::info("[Node::process_tcu_positive_ack] move to next window starting {}", _seq_num);
             _ack_received = true;
         }
@@ -935,7 +1038,7 @@ void Node::process_tcu_positive_ack(tcu_packet packet)
     else
     {
         spdlog::error("[Node::process_tcu_positive_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -958,11 +1061,11 @@ void Node::send_tcu_conn_req()
         packet.header.seq_number = 0;
         packet.calculate_crc();
 
-        _ack_received = false;
-        send_packet(packet.to_buff(), TCU_HDR_LEN);
-        wait_for_conn_ack();
-
         _pcb.new_phase(TCU_PHASE_CONNECT);
+
+        _ack_received = false;
+        send_packet(packet.to_buff(), TCU_HDR_LEN, true);
+        wait_for_conn_ack();
     }
     else if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
@@ -971,7 +1074,7 @@ void Node::send_tcu_conn_req()
     else
     {
         spdlog::error("[Node::send_tcu_conn_req] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -988,14 +1091,14 @@ void Node::send_tcu_conn_ack()
         packet.header.seq_number = 0;
         packet.calculate_crc();
 
-        send_packet(packet.to_buff(), TCU_HDR_LEN);
+        send_packet(packet.to_buff(), TCU_HDR_LEN, true);
 
         _pcb.new_phase(TCU_PHASE_NETWORK);
     }
     else
     {
         spdlog::error("[Node::send_tcu_conn_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -1011,19 +1114,21 @@ void Node::send_tcu_disconn_req()
         packet.header.seq_number = 0;
         packet.calculate_crc();
 
-        _ack_received = false;
-        send_packet(packet.to_buff(), TCU_HDR_LEN);
-        wait_for_conn_ack();
-
         _pcb.new_phase(TCU_PHASE_DISCONNECT);
+
+        _ack_received = false;
+        send_packet(packet.to_buff(), TCU_HDR_LEN, true);
+        wait_for_conn_ack();
     }
     else if (_pcb.phase <= TCU_PHASE_INITIALIZE)
     {
         std::cout << "no active connection" << std::endl;
+        return;
     }
     else
     {
         std::cout << "connection not established" << std::endl;
+        return;
     }
 }
 
@@ -1040,14 +1145,14 @@ void Node::send_tcu_disconn_ack()
         packet.header.seq_number = 0;
         packet.calculate_crc();
 
-        send_packet(packet.to_buff(), TCU_HDR_LEN);
+        send_packet(packet.to_buff(), TCU_HDR_LEN, true);
 
         _pcb.new_phase(TCU_PHASE_HOLDOFF);
     }
     else
     {
         spdlog::error("[Node::send_tcu_disconn_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -1060,7 +1165,7 @@ void Node::send_keep_alive_req()
     packet.header.seq_number = 0;
     packet.calculate_crc();
 
-    send_packet(packet.to_buff(), TCU_HDR_LEN);
+    send_packet(packet.to_buff(), TCU_HDR_LEN, true);
 }
 
 void Node::send_keep_alive_ack()
@@ -1076,18 +1181,24 @@ void Node::send_keep_alive_ack()
         packet.header.seq_number = 0;
         packet.calculate_crc();
 
-        send_packet(packet.to_buff(), TCU_HDR_LEN);
+        send_packet(packet.to_buff(), TCU_HDR_LEN, true);
     }
     else
     {
         spdlog::error("[Node::send_keep_alive_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 
 }
 
 void Node::send_window()
 {
+    if (_dist(_gen) < _window_loss_rate)
+    {
+        spdlog::info("[Node::send_window] simulated window loss");
+        return;
+    }
+
     spdlog::info("[Node::send_window] sending window range [{},{}]", _seq_num, std::min(_seq_num + _window_size - uint24_t(1), _total_num));
 
     // Send all fragments for the current window
@@ -1099,7 +1210,7 @@ void Node::send_window()
             spdlog::info("[Node::send_window] sending tcp fragment {}", it->first);
 
             tcu_packet& packet = it->second;
-            send_packet(packet.to_buff(), TCU_HDR_LEN + packet.header.length);
+            send_packet(packet.to_buff(), TCU_HDR_LEN + packet.header.length, false);
             std::this_thread::sleep_for(std::chrono::microseconds(500));
         }
     }
@@ -1132,7 +1243,7 @@ void Node::send_text(const std::string& message)
 
             spdlog::info("[Node::send_file] sent tcu single text size {}", message_length);
 
-            send_packet(packet.to_buff(), TCU_HDR_LEN + message_length);
+            send_packet(packet.to_buff(), TCU_HDR_LEN + message_length, false);
         }
         else
         {
@@ -1191,6 +1302,7 @@ void Node::send_text(const std::string& message)
     else
     {
         std::cout << "connection not established" << std::endl;
+        return;
     }
 }
 
@@ -1248,7 +1360,7 @@ void Node::send_file(const std::string& file_path)
 
             spdlog::info("[Node::send_file] sent tcu single file name {} size {}", file_name, total_size);
 
-            send_packet(packet.to_buff(), TCU_HDR_LEN + total_size);
+            send_packet(packet.to_buff(), TCU_HDR_LEN + total_size, false);
         }
         else
         {
@@ -1308,6 +1420,7 @@ void Node::send_file(const std::string& file_path)
     else
     {
         std::cout << "connection not established" << std::endl;
+        return;
     }
 }
 
@@ -1323,12 +1436,12 @@ void Node::send_tcu_negative_ack(uint24_t seq_number)
         packet.header.seq_number = seq_number;
         packet.calculate_crc();
 
-        send_packet(packet.to_buff(), TCU_HDR_LEN);
+        send_packet(packet.to_buff(), TCU_HDR_LEN, true);
     }
     else
     {
         spdlog::error("[Node::send_tcu_negative_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }
 
@@ -1344,11 +1457,11 @@ void Node::send_tcu_positive_ack(uint24_t seq_number)
         packet.header.seq_number = seq_number;
         packet.calculate_crc();
 
-        send_packet(packet.to_buff(), TCU_HDR_LEN);
+        send_packet(packet.to_buff(), TCU_HDR_LEN, true);
     }
     else
     {
         spdlog::error("[Node::send_tcu_positive_ack] unexpected phase {}", _pcb.phase);
-        exit(EXIT_FAILURE);
+        return;
     }
 }

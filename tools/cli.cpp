@@ -186,6 +186,36 @@ void CLI::run()
             _node->send_file(file_path);
         }
 
+        else if (command.substr(0, 15) == "set error rate ")
+        {
+            try {
+                double rate = std::stod(command.substr(15));
+                _node->set_error_rate(rate);
+            } catch (std::exception&) {
+                std::cout << "invalid error rate" << std::endl;
+            }
+        }
+
+        else if (command.substr(0, 21) == "set packet loss rate ")
+        {
+            try {
+                double rate = std::stod(command.substr(21));
+                _node->set_packet_loss_rate(rate);
+            } catch (std::exception&) {
+                std::cout << "invalid packet loss rate" << std::endl;
+            }
+        }
+
+        else if (command.substr(0, 21) == "set window loss rate ")
+        {
+            try {
+                double rate = std::stod(command.substr(21));
+                _node->set_window_loss_rate(rate);
+            } catch (std::exception&) {
+                std::cout << "invalid window loss rate" << std::endl;
+            }
+        }
+
         else if (command.empty())
         {
             continue;
@@ -215,6 +245,10 @@ void CLI::display_help() {
               << "\n"
               << "  set log level <level>           - set log level (trace, debug, info, warn, error, critical)\n"
               << "  show log                        - display current logs\n"
+              << "\n"
+              << "  set error rate <rate>           - set chance of corrupted packet (0-100)\n"
+              << "  set packet loss rate <rate>     - set chance of lost packet (0-100)\n"
+              << "  set window loss rate <rate>     - set chance of lost window (0-100)\n"
               << "\n"
               << "  exit                            - exit application\n"
               << "\n";
