@@ -6,6 +6,8 @@
 
 #include <iostream>
 #include <string>
+#include <readline/readline.h>
+#include <readline/history.h>
 
 #include "../entities/node.h"
 

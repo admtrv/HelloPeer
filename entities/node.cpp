@@ -406,6 +406,7 @@ void Node::wait_for_conn_ack()
 
     spdlog::info("[Node::wait_for_conn_ack] no tcu acknowledgment, closing connection");
     _pcb.new_phase(TCU_PHASE_HOLDOFF);
+    stop_keep_alive();
     std::cout << "destination node down, connection closed" << std::endl;
 }
 
@@ -438,6 +439,7 @@ void Node::wait_for_recv_ack()
 
     spdlog::error("[Node::wait_for_recv_ack] no tcu receive acknowledgment, closing connection");
     _pcb.new_phase(TCU_PHASE_HOLDOFF);
+    stop_keep_alive();
     std::cout << "destination node down, connection closed" << std::endl;
 }
 
@@ -702,7 +704,7 @@ void Node::process_tcu_single_text(tcu_packet packet)
         std::string message(reinterpret_cast<char*>(packet.payload), packet.header.length);
         std::cout << "received text " << message << std::endl;
 
-        send_tcu_positive_ack(0);
+        send_tcu_positive_ack(packet.header.seq_number);
     }
     else
     {
@@ -728,7 +730,7 @@ void Node::process_tcu_single_file(tcu_packet packet)
 
         save_file(file);
 
-        send_tcu_positive_ack(0);
+        send_tcu_positive_ack(packet.header.seq_number);
     }
     else
     {
@@ -978,33 +980,52 @@ void Node::process_tcu_negative_ack(tcu_packet packet)
 
         uint24_t nack_seq = packet.header.seq_number;
 
-        auto it = _send_packets.find(nack_seq);
-        if (it != _send_packets.end())
+        if (_send_packets.size() == 1)
         {
-            tcu_packet& error_packet = it->second;
+            // Single message
 
-            uint24_t last_window_start = (_total_num > _window_size) ? (_total_num - _window_size + uint24_t(1)) : uint24_t(1);
-            if (nack_seq < last_window_start)
-            {
-                // Not in last window
-                error_packet.header.flags |= TCU_HDR_FLAG_FIN;
-                spdlog::info("[Node::process_tcu_negative_ack] fragment from window");
-            }
-            else
-            {
-                // In the last window
-                error_packet.header.flags &= ~TCU_HDR_FLAG_MF;
-                spdlog::info("[Node::process_tcu_negative_ack] fragment from last window", nack_seq);
-            }
-            error_packet.calculate_crc();
+            auto it = _send_packets.begin();
+            tcu_packet& single_packet = it->second;
 
-            send_packet(error_packet.to_buff(), TCU_HDR_LEN + error_packet.header.length, true);
-            spdlog::info("[Node::process_tcu_negative_ack] recent packet {}", nack_seq);
+            spdlog::info("[Node::process_tcu_negative_ack] single tcu packet");
+
+            single_packet.calculate_crc();
+            send_packet(single_packet.to_buff(), TCU_HDR_LEN + single_packet.header.length, true);
+
+            spdlog::info("[Node::process_tcu_negative_ack] resent single packet {}", single_packet.header.seq_number);
         }
         else
         {
-            spdlog::warn("[Node::process_tcu_negative_ack] unknown packet {}", nack_seq);
-            exit(EXIT_FAILURE);
+            // Fragmented message
+
+            auto it = _send_packets.find(nack_seq);
+            if (it != _send_packets.end())
+            {
+                tcu_packet& error_packet = it->second;
+
+                uint24_t last_window_start = (_total_num > _window_size) ? (_total_num - _window_size + uint24_t(1)) : uint24_t(1);
+                if (nack_seq < last_window_start)
+                {
+                    // Not in last window
+                    error_packet.header.flags |= TCU_HDR_FLAG_FIN;
+                    spdlog::info("[Node::process_tcu_negative_ack] tcu packet from window");
+                }
+                else
+                {
+                    // In the last window
+                    error_packet.header.flags &= ~TCU_HDR_FLAG_MF;
+                    spdlog::info("[Node::process_tcu_negative_ack] tcu packet from last window", nack_seq);
+                }
+                error_packet.calculate_crc();
+
+                send_packet(error_packet.to_buff(), TCU_HDR_LEN + error_packet.header.length, true);
+                spdlog::info("[Node::process_tcu_negative_ack] recent packet {}", nack_seq);
+            }
+            else
+            {
+                spdlog::warn("[Node::process_tcu_negative_ack] unknown packet {}", nack_seq);
+                return;
+            }
         }
     }
     else
@@ -1024,12 +1045,14 @@ void Node::process_tcu_positive_ack(tcu_packet packet)
 
         if (ack_seq == _total_num)
         {
+            // Single message or last packet of fragmented message
             _seq_num += _window_size;
             spdlog::info("[Node::process_tcu_positive_ack] all packets successfully sent");
             _ack_received = true;
         }
         else
         {
+            // Packet of fragmented message
             _seq_num += _window_size;
             spdlog::info("[Node::process_tcu_positive_ack] move to next window starting {}", _seq_num);
             _ack_received = true;
@@ -1242,8 +1265,14 @@ void Node::send_text(const std::string& message)
             _send_packets[packet.header.seq_number] = packet;
 
             spdlog::info("[Node::send_file] sent tcu single text size {}", message_length);
+            std::cout << "sending text..." << std::endl;
 
+            _ack_received = false;
             send_packet(packet.to_buff(), TCU_HDR_LEN + message_length, false);
+            wait_for_recv_ack();
+
+            spdlog::info("[Node::send_file] file transmission completed");
+            std::cout << "complete" << std::endl;
         }
         else
         {
@@ -1350,7 +1379,7 @@ void Node::send_file(const std::string& file_path)
             tcu_packet packet{};
             packet.header.flags = TCU_HDR_FLAG_DF | TCU_HDR_FLAG_FL;
             packet.header.length = static_cast<uint16_t>(total_size);
-            packet.header.seq_number = 0;
+            packet.header.seq_number = 1;
             packet.payload = new unsigned char[total_size];
             std::memcpy(packet.payload, file_buffer, total_size);
 
@@ -1359,8 +1388,14 @@ void Node::send_file(const std::string& file_path)
             _send_packets[packet.header.seq_number] = packet;
 
             spdlog::info("[Node::send_file] sent tcu single file name {} size {}", file_name, total_size);
+            std::cout << "sending file..." << std::endl;
 
+            _ack_received = false;
             send_packet(packet.to_buff(), TCU_HDR_LEN + total_size, false);
+            wait_for_recv_ack();
+
+            spdlog::info("[Node::send_file] file transmission completed");
+            std::cout << "complete" << std::endl;
         }
         else
         {

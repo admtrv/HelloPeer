@@ -6,8 +6,9 @@ project(pks)
 set(CMAKE_CXX_STANDARD 20)
 
 # recursively find all .cpp files, excluding 'cmake-build-debug':
-file(GLOB_RECURSE SOURCES "*.cpp")
-list(FILTER SOURCES EXCLUDE REGEX ".*cmake-build-debug.*")
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/*.cpp")
+list(FILTER SOURCES EXCLUDE REGEX "${CMAKE_BINARY_DIR}")
+
 
 message(STATUS "Adding source files:")
 foreach(SOURCE ${SOURCES})

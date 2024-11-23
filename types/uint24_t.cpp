@@ -2,7 +2,6 @@
  * uint24_t.cpp
  */
 
-#include <iostream>
 #include "uint24_t.h"
 
 uint24_t::uint24_t() : value(0) {}

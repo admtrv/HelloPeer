@@ -4,9 +4,6 @@
 
 #include "cli.h"
 
-#include <readline/readline.h>
-#include <readline/history.h>
-
 #include "logger.h"
 #include "../version.h"
 
