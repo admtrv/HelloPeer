@@ -97,6 +97,10 @@ function tcu_proto.dissector(buffer, pinfo, tree)
         info_str = info_str .. "Single File Message"
     elseif has_flag(DF) then
         info_str = info_str .. "Single Text Message"
+    elseif has_flag(MF) and has_flag(FIN) and has_flag(FL) then
+        info_str = info_str .. "Last Window Fragment of File Message " .. tostring(seq_num)
+    elseif has_flag(MF) and has_flag(FIN) then
+        info_str = info_str .. "Last Window Fragment of Text Message " .. tostring(seq_num)
     elseif has_flag(MF) and has_flag(FL) then
         info_str = info_str .. "Fragment of File Message " .. tostring(seq_num)
     elseif has_flag(MF) then
@@ -108,6 +112,7 @@ function tcu_proto.dissector(buffer, pinfo, tree)
     else
         info_str = info_str .. "Unknown Packet Type"
     end
+
     -- Update info 
     pinfo.cols.info:set(info_str)
     

@@ -43,23 +43,23 @@ uint24_t& uint24_t::operator%=(uint32_t v) {
 }
 
 uint24_t uint24_t::operator+(uint32_t v) const {
-    return uint24_t((value + v) & 0xFFFFFF);
+    return {(value + v) & 0xFFFFFF};
 }
 
 uint24_t uint24_t::operator-(uint32_t v) const {
-    return uint24_t((value - v) & 0xFFFFFF);
+    return {(value - v) & 0xFFFFFF};
 }
 
 uint24_t uint24_t::operator*(uint32_t v) const {
-    return uint24_t((value * v) & 0xFFFFFF);
+    return {(value * v) & 0xFFFFFF};
 }
 
 uint24_t uint24_t::operator/(uint32_t v) const {
-    return uint24_t(value / v);
+    return {value / v};
 }
 
 uint24_t uint24_t::operator%(uint32_t v) const {
-    return uint24_t(value % v);
+    return {value % v};
 }
 
 uint24_t& uint24_t::operator++() {
@@ -120,7 +120,7 @@ uint24_t hton24(uint24_t host24)
                          (host_value & 0x00FF00) |
                          ((host_value & 0xFF0000) >> 16);
 
-    return uint24_t(net_value);
+    return {net_value};
 }
 
 uint24_t ntoh24(uint24_t net24)
@@ -131,5 +131,5 @@ uint24_t ntoh24(uint24_t net24)
                           (net_value & 0x00FF00) |
                           ((net_value & 0xFF0000) >> 16);
 
-    return uint24_t(host_value);
+    return {host_value};
 }

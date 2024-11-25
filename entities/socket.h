@@ -14,9 +14,9 @@ public:
     Socket(int domain, int type, int protocol);
     ~Socket();
 
-    int set_non_blocking() const;
+    [[nodiscard]] int set_non_blocking() const;
 
-    int get_socket() const;
+    [[nodiscard]] int get_socket() const;
     void close_socket();
 
     /* Copy protection */

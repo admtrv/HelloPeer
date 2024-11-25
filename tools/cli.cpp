@@ -4,9 +4,6 @@
 
 #include "cli.h"
 
-#include "logger.h"
-#include "../version.h"
-
 CLI::CLI(Node* node) : _node(node)
 {
     read_history(CLI_HISTORY_FILE_NAME);
@@ -243,9 +240,9 @@ void CLI::display_help() {
               << "  set log level <level>           - set log level (trace, debug, info, warn, error, critical)\n"
               << "  show log                        - display current logs\n"
               << "\n"
-              << "  set error rate <rate>           - set chance of corrupted packet (0-100)\n"
-              << "  set packet loss rate <rate>     - set chance of lost packet (0-100)\n"
-              << "  set window loss rate <rate>     - set chance of lost window (0-100)\n"
+              << "  set error rate <rate>           - set chance of corrupted packet (0,100)\n"
+              << "  set packet loss rate <rate>     - set chance of lost packet (0,100)\n"
+              << "  set window loss rate <rate>     - set chance of lost window (0,100)\n"
               << "\n"
               << "  exit                            - exit application\n"
               << "\n";

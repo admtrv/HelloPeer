@@ -114,7 +114,7 @@
 #define TCU_ACTIVITY_ATTEMPT_COUNT      3       // Number of attempts
 #define TCU_ACTIVITY_ATTEMPT_INTERVAL   5       // 5 second interval between attempts
 
-#define TCU_CONNECTION_TIMEOUT_INTERVAL 5       // 5 seconds to get conn ack back
+#define TCU_CONFIRM_TIMEOUT_INTERVAL    5       // 5 seconds to get conn ack back
 #define TCU_RECEIVE_TIMEOUT_INTERVAL    60      // 1 minute (60 seconds) to get window ack
 
 struct tcu_header {

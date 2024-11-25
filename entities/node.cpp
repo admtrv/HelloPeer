@@ -49,7 +49,7 @@ Node::Node() : _socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP), _receive_running(false
 
 Node::~Node()
 {
-    _pcb.new_phase(TCU_PHASE_CLOSED);
+    _pcb.new_phase(TCU_PHASE_DEAD);
 
     stop_receiving();
     stop_keep_alive();
@@ -336,10 +336,10 @@ void Node::receive_packet()
     }
 }
 
-void Node::send_packet(unsigned char* buff, size_t length, bool control)
+void Node::send_packet(unsigned char* buff, size_t length, bool service)
 {
-    // Control (system) packet
-    if (control)
+    // Service packet
+    if (service)
     {
         ssize_t num_bytes = sendto(_socket.get_socket(), buff, length, 0, reinterpret_cast<struct sockaddr*>(&_pcb.dest_addr), sizeof(_pcb.dest_addr));
 
@@ -388,12 +388,12 @@ void Node::send_packet(unsigned char* buff, size_t length, bool control)
     delete[] temp_buff;
 }
 
-void Node::wait_for_conn_ack()
+void Node::wait_for_conf_ack()
 {
-    spdlog::info("[Node::wait_for_conn_ack] waiting for tcu connection acknowledgment");
+    spdlog::info("[Node::wait_for_conf_ack] waiting for tcu connection acknowledgment");
 
     auto start_time = std::chrono::steady_clock::now();
-    while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_CONNECTION_TIMEOUT_INTERVAL))
+    while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(TCU_CONFIRM_TIMEOUT_INTERVAL))
     {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
@@ -404,7 +404,7 @@ void Node::wait_for_conn_ack()
         }
     }
 
-    spdlog::info("[Node::wait_for_conn_ack] no tcu acknowledgment, closing connection");
+    spdlog::info("[Node::wait_for_conf_ack] no tcu acknowledgment, closing connection");
     _pcb.new_phase(TCU_PHASE_HOLDOFF);
     stop_keep_alive();
     std::cout << "destination node down, connection closed" << std::endl;
@@ -1003,7 +1003,7 @@ void Node::process_tcu_negative_ack(tcu_packet packet)
             {
                 tcu_packet& error_packet = it->second;
 
-                uint24_t last_window_start = (_total_num > _window_size) ? (_total_num - _window_size + uint24_t(1)) : uint24_t(1);
+                uint24_t last_window_start = (_total_num > _window_size) ? (_total_num - ((_total_num - uint24_t(1)) % _window_size)) : uint24_t(1);
                 if (nack_seq < last_window_start)
                 {
                     // Not in last window
@@ -1088,7 +1088,7 @@ void Node::send_tcu_conn_req()
 
         _ack_received = false;
         send_packet(packet.to_buff(), TCU_HDR_LEN, true);
-        wait_for_conn_ack();
+        wait_for_conf_ack();
     }
     else if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
@@ -1141,7 +1141,7 @@ void Node::send_tcu_disconn_req()
 
         _ack_received = false;
         send_packet(packet.to_buff(), TCU_HDR_LEN, true);
-        wait_for_conn_ack();
+        wait_for_conf_ack();
     }
     else if (_pcb.phase <= TCU_PHASE_INITIALIZE)
     {
@@ -1317,15 +1317,18 @@ void Node::send_text(const std::string& message)
             spdlog::info("[Node::send_text] sent tcu fragmented text size {} fragments {} fragment size {}", message_length, _total_num, max_payload_size);
             std::cout << "sending text..." << std::endl;
 
-            while (_seq_num <= _total_num)
+            while (_seq_num <= _total_num && _pcb.phase == TCU_PHASE_NETWORK)
             {
                 _ack_received = false;
                 send_window();
                 wait_for_recv_ack();
             }
 
-            spdlog::info("[Node::send_file] file transmission completed");
-            std::cout << "complete" << std::endl;
+            if (_pcb.phase == TCU_PHASE_NETWORK)
+            {
+                spdlog::info("[Node::send_text] text transmission completed");
+                std::cout << "complete" << std::endl;
+            }
         }
     }
     else
@@ -1439,15 +1442,20 @@ void Node::send_file(const std::string& file_path)
             spdlog::info("[Node::send_file] sent tcu fragmented file name {} size {} fragments {} fragment size {}", file_name, total_size, _total_num, max_payload_size);
             std::cout << "sending file..." << std::endl;
 
-            while (_seq_num < _total_num)
+            // Sending file
+            while (_seq_num < _total_num && _pcb.phase == TCU_PHASE_NETWORK)
             {
                 _ack_received = false;
                 send_window();
                 wait_for_recv_ack();
             }
 
-            spdlog::info("[Node::send_file] file transmission completed");
-            std::cout << "complete" << std::endl;
+            // Checking success using phase
+            if (_pcb.phase == TCU_PHASE_NETWORK)
+            {
+                spdlog::info("[Node::send_file] file transmission completed");
+                std::cout << "complete" << std::endl;
+            }
         }
 
         delete[] file_buffer;
@@ -1500,3 +1508,4 @@ void Node::send_tcu_positive_ack(uint24_t seq_number)
         return;
     }
 }
+

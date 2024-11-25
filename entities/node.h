@@ -49,7 +49,7 @@ public:
     void set_window_loss_rate(double rate);
 
     /* Abstract methods */
-    void send_packet(unsigned char* buff, size_t length, bool control);     // Function to send packet
+    void send_packet(unsigned char* buff, size_t length, bool service);     // Function to send packet
     void receive_packet();                                                  // Function to receive packet
 
     /* Concrete methods */
@@ -70,7 +70,7 @@ public:
     void stop_keep_alive();
 
     /* Waiting methods */
-    void wait_for_conn_ack();
+    void wait_for_conf_ack();
     void wait_for_recv_ack();
 
     /* FSM methods */

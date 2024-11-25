@@ -1,7 +1,7 @@
 # Transmission Control over UDP (TCU) Protocol Coloring Rule
 # Import this color rule file to View -> Coloring Rules...
-#               TCU Protocol        Single Text          Fragment Text    Last Fragmet Text      Single File         Fragment File     Last Fragment File
-@TCU Non-Service Message@tcu && ( tcu.flags == 0x10 || tcu.flags == 0x20 || tcu.flags == 0 || tcu.flags == 0x50 || tcu.flags == 0x60 || tcu.flags == 0x40
+#               TCU Protocol        Single Text | Fragment Text | Last Window Fragment Text | Last Fragment Text | Single File | Fragment File | Last Window Fragment File | Last Fragment File
+@TCU Non-Service Message@tcu && ( tcu.flags == 0x10 || tcu.flags == 0x20 || tcu.flags == 0x24 || tcu.flags == 0 || tcu.flags == 0x50 || tcu.flags == 0x60 || tcu.flags == 0x64 || tcu.flags == 0x40
  )@[65535,43690,65535][0,0,0]
 @Bad TCP@tcp.analysis.flags && !tcp.analysis.window_update && !tcp.analysis.keep_alive && !tcp.analysis.keep_alive_ack@[4626,10023,11822][63479,34695,34695]
 @HSRP State Change@hsrp.state != 8 && hsrp.state != 16@[4626,10023,11822][65535,64764,40092]

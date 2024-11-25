@@ -9,6 +9,8 @@
 #include <readline/readline.h>
 #include <readline/history.h>
 
+#include "logger.h"
+#include "../version.h"
 #include "../entities/node.h"
 
 #define CLI_HISTORY_FILE_NAME ".cli_history"
