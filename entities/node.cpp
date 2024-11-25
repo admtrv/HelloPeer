@@ -1271,8 +1271,12 @@ void Node::send_text(const std::string& message)
             send_packet(packet.to_buff(), TCU_HDR_LEN + message_length, false);
             wait_for_recv_ack();
 
-            spdlog::info("[Node::send_file] file transmission completed");
-            std::cout << "complete" << std::endl;
+            // Checking success using phase
+            if (_pcb.phase == TCU_PHASE_NETWORK)
+            {
+                spdlog::info("[Node::send_text] single text transmission completed");
+                std::cout << "complete" << std::endl;
+            }
         }
         else
         {
@@ -1326,7 +1330,7 @@ void Node::send_text(const std::string& message)
 
             if (_pcb.phase == TCU_PHASE_NETWORK)
             {
-                spdlog::info("[Node::send_text] text transmission completed");
+                spdlog::info("[Node::send_text] fragmented text transmission completed");
                 std::cout << "complete" << std::endl;
             }
         }
@@ -1397,8 +1401,12 @@ void Node::send_file(const std::string& file_path)
             send_packet(packet.to_buff(), TCU_HDR_LEN + total_size, false);
             wait_for_recv_ack();
 
-            spdlog::info("[Node::send_file] file transmission completed");
-            std::cout << "complete" << std::endl;
+            // Checking success using phase
+            if (_pcb.phase == TCU_PHASE_NETWORK)
+            {
+                spdlog::info("[Node::send_file] single file transmission completed");
+                std::cout << "complete" << std::endl;
+            }
         }
         else
         {
@@ -1443,7 +1451,7 @@ void Node::send_file(const std::string& file_path)
             std::cout << "sending file..." << std::endl;
 
             // Sending file
-            while (_seq_num < _total_num && _pcb.phase == TCU_PHASE_NETWORK)
+            while (_seq_num <= _total_num && _pcb.phase == TCU_PHASE_NETWORK)
             {
                 _ack_received = false;
                 send_window();
@@ -1453,7 +1461,7 @@ void Node::send_file(const std::string& file_path)
             // Checking success using phase
             if (_pcb.phase == TCU_PHASE_NETWORK)
             {
-                spdlog::info("[Node::send_file] file transmission completed");
+                spdlog::info("[Node::send_file] fragmented file transmission completed");
                 std::cout << "complete" << std::endl;
             }
         }

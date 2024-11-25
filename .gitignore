@@ -1,1 +1,5 @@
+# build directory
 /cmake-build-debug/
+
+# project settings directory
+/.idea

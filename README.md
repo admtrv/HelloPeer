@@ -121,3 +121,6 @@ set log level <level>
 ```
 
 View logs during runtime with `show log`, or check the `.logs` file after termination.
+
+## Documentation
+Detailed documentation and explanations are available in the `doc/` directory.
