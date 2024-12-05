@@ -325,8 +325,7 @@ void Node::receive_packet()
         else
         {
             spdlog::info("[Node::receive_packet] received {} bytes from {}:{}", num_bytes, inet_ntoa(src_addr.sin_addr), ntohs(src_addr.sin_port));
-
-            _pcb.update_last_activity();
+            
             fsm_process(reinterpret_cast<unsigned char*>(temp_buff), static_cast<size_t>(num_bytes));
         }
     }
@@ -611,7 +610,9 @@ void Node::process_tcu_conn_req(tcu_packet packet)
     if (_pcb.phase <= TCU_PHASE_INITIALIZE)
     {
         spdlog::info("[Node::process_tcu_conn_req] received tcu connection request");
+        _pcb.update_last_activity();
         _pcb.new_phase(TCU_PHASE_CONNECT);
+
         start_keep_alive();
         std::cout << "connected" << std::endl;
         send_tcu_conn_ack();
@@ -628,6 +629,7 @@ void Node::process_tcu_conn_ack(tcu_packet packet)
     if (_pcb.phase == TCU_PHASE_CONNECT)
     {
         spdlog::info("[Node::process_tcu_conn_ack] received tcu connection acknowledgment");
+        _pcb.update_last_activity();
         _ack_received = true;
 
         _pcb.new_phase(TCU_PHASE_NETWORK);
@@ -646,6 +648,8 @@ void Node::process_tcu_disconn_req(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_disconn_req] received tcu disconnection request");
+        _pcb.update_last_activity();
+
         _pcb.new_phase(TCU_PHASE_DISCONNECT);
         stop_keep_alive();
         std::cout << "disconnected" << std::endl;
@@ -663,6 +667,7 @@ void Node::process_tcu_disconn_ack(tcu_packet packet)
     if (_pcb.phase == TCU_PHASE_DISCONNECT)
     {
         spdlog::info("[Node::process_tcu_disconn_ack] received tcu disconnection acknowledgment");
+        _pcb.update_last_activity();
         _ack_received = true;
 
         _pcb.new_phase(TCU_PHASE_HOLDOFF);
@@ -679,6 +684,8 @@ void Node::process_tcu_disconn_ack(tcu_packet packet)
 void Node::process_tcu_ka_req(tcu_packet packet)
 {
     spdlog::info("[Node::process_tcu_ka_req] received tcu keep-alive request");
+    _pcb.update_last_activity();
+
     send_keep_alive_ack();
 }
 
@@ -693,6 +700,7 @@ void Node::process_tcu_single_text(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_single_text] received tcu single message");
+        _pcb.update_last_activity();
 
         if (!packet.validate_crc())
         {
@@ -718,6 +726,7 @@ void Node::process_tcu_single_file(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_single_file] received tcu single file");
+        _pcb.update_last_activity();
 
         if (!packet.validate_crc())
         {
@@ -744,6 +753,7 @@ void Node::process_tcu_more_frag_text(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_more_frag_text] received tcu text packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         if (_received_packets.empty())
         {
@@ -775,6 +785,7 @@ void Node::process_tcu_last_wind_frag_text(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_more_frag_text] received tcu last window text packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         if (!packet.validate_crc())
         {
@@ -818,6 +829,7 @@ void Node::process_tcu_last_frag_text(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_last_frag_text] received tcu last text packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         if (!packet.validate_crc())
         {
@@ -861,6 +873,7 @@ void Node::process_tcu_more_frag_file(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_more_frag_file] received tcu file packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         if (_received_packets.empty())
         {
@@ -892,6 +905,7 @@ void Node::process_tcu_last_wind_frag_file(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_last_wind_frag_file] received tcu last window file packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         if (!packet.validate_crc())
         {
@@ -934,6 +948,7 @@ void Node::process_tcu_last_frag_file(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_last_frag_file] received tcu last file packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         if (!packet.validate_crc())
         {
@@ -977,6 +992,7 @@ void Node::process_tcu_negative_ack(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_negative_ack] received tcu negative acknowledgment packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         uint24_t nack_seq = packet.header.seq_number;
 
@@ -1040,6 +1056,7 @@ void Node::process_tcu_positive_ack(tcu_packet packet)
     if (_pcb.phase >= TCU_PHASE_CONNECT && _pcb.phase <= TCU_PHASE_NETWORK)
     {
         spdlog::info("[Node::process_tcu_positive_ack] received tcu positive acknowledgment packet {}", packet.header.seq_number);
+        _pcb.update_last_activity();
 
         uint24_t ack_seq = packet.header.seq_number;
 
